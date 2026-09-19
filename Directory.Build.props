@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Single source of truth for the product version. See docs/VERSIONING.md §2. -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+    <GitSha Condition="'$(GitSha)' == ''">local</GitSha>
+    <InformationalVersion>$(VersionPrefix)+$(BuildNumber).$(GitSha)</InformationalVersion>
+    <!-- SourceLink otherwise appends "+<sha>" again, producing 0.1.0+0.local.<sha>. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Product>Çalış Bakalım Enik</Product>
+    <Company>Starlius</Company>
+  </PropertyGroup>
+
+</Project>

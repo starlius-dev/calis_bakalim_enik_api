@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 
 # Project documentation and design mockups (kept local, not published)
 docs/
+
+# Serilog rolling files
+logs/
