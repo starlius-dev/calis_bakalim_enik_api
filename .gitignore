@@ -483,5 +483,5 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# Project documentation (kept local, not published)
-docs/*.md
+# Project documentation and design mockups (kept local, not published)
+docs/
