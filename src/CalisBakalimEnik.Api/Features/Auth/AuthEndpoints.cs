@@ -13,6 +13,12 @@ public sealed record ConfirmEmailRequest(string UserId, string Token);
 public sealed record LoginRequest(string Email, string Password);
 public sealed record RefreshRequest(string RefreshToken);
 
+/// <summary>Returned by /login when a second factor is enrolled.</summary>
+public sealed record MfaRequiredResponse(
+    bool MfaRequired,
+    Guid ChallengeId,
+    IReadOnlyCollection<FactorResponse> Factors);
+
 public sealed record TokenResponse(
     string AccessToken,
     DateTimeOffset AccessExpiresAt,
@@ -127,32 +133,77 @@ public static class AuthEndpoints
     }
 
     /// <summary>
-    /// A wrong password, an unknown address and a disabled account all return the
-    /// same body. The unknown-user branch still hashes a dummy password so the
-    /// response time does not reveal whether the address exists.
+    /// Password step. A wrong password, an unknown address and a disabled account
+    /// all return the same body, and the unknown-user branch still hashes a dummy
+    /// password so the timing does not reveal whether the address exists.
+    ///
+    /// When MFA is enrolled this returns a CHALLENGE, not tokens.
     /// </summary>
     private static async Task<IResult> LoginAsync(
         LoginRequest request,
         UserManager<AppUser> users,
         AuthService auth,
+        MfaService mfa,
+        BruteForceGuard guard,
+        SecurityEventWriter events,
         IClock clock,
         HttpContext http,
         CancellationToken ct)
     {
+        var ip = MfaEndpoints.ClientIp(http);
+        var agent = MfaEndpoints.UserAgent(http);
+        var accountKey = MfaEndpoints.AccountKey(request.Email);
+
+        // Layer 1 and 2, checked BEFORE any password work: a locked account must
+        // not be a free PBKDF2 oracle.
+        var lockout = await guard.CheckAsync(accountKey, ip, ct);
+        if (lockout.IsLocked) return Locked(lockout, http);
+
         var user = await users.FindByEmailAsync(request.Email);
 
         if (user is null)
         {
-            // Burn equivalent CPU so the response time does not reveal whether the
-            // address exists. The result is deliberately discarded.
+            // Burn equivalent CPU so the response time does not reveal whether
+            // the address exists. The result is deliberately discarded.
             _ = users.PasswordHasher.VerifyHashedPassword(
-                new AppUser(), DummyHash, request.Password);
+                new AppUser(), DummyHashFor(users.PasswordHasher), request.Password);
+
+            var unknownState = await guard.RecordFailureAsync(accountKey, ip, ct);
+
+            await events.WriteAsync(SecurityEventType.LoginAttempt, succeeded: false,
+                userId: null, ip, agent, new { reason = "unknown_user" }, ct);
+
+            // Record the lockout even though there is no user to attach it to —
+            // security_events.user_id is nullable for exactly this case, and a
+            // password-spray campaign is only visible if these are kept.
+            if (unknownState.IsLocked)
+            {
+                await events.WriteAsync(SecurityEventType.AccountLocked, succeeded: true,
+                    userId: null, ip, agent,
+                    new { retryAfter = unknownState.RetryAfter?.TotalSeconds, target = "unknown_user" },
+                    ct);
+            }
 
             return Problem(AuthErrors.InvalidCredentials, StatusCodes.Status401Unauthorized, http);
         }
 
         if (!await users.CheckPasswordAsync(user, request.Password))
+        {
+            var state = await guard.RecordFailureAsync(accountKey, ip, ct);
+
+            await events.WriteAsync(SecurityEventType.LoginAttempt, succeeded: false,
+                user.Id, ip, agent, new { reason = "bad_password" }, ct);
+
+            if (state.IsLocked)
+            {
+                await events.WriteAsync(SecurityEventType.AccountLocked, succeeded: true,
+                    user.Id, ip, agent, new { retryAfter = state.RetryAfter?.TotalSeconds }, ct);
+
+                return Locked(state, http);
+            }
+
             return Problem(AuthErrors.InvalidCredentials, StatusCodes.Status401Unauthorized, http);
+        }
 
         if (user.Status == UserStatus.PendingConfirmation)
             return Problem(AuthErrors.NotConfirmed, StatusCodes.Status403Forbidden, http);
@@ -160,13 +211,58 @@ public static class AuthEndpoints
         if (user.Status == UserStatus.Disabled)
             return Problem(AuthErrors.Disabled, StatusCodes.Status403Forbidden, http);
 
+        // ── second factor ────────────────────────────────────────────────
+        var factors = await mfa.GetUsableFactorsAsync(user.Id, ct);
+
+        if (factors.Count > 0 || user.MfaRequired)
+        {
+            if (factors.Count == 0)
+                return Problem(MfaErrors.NotEnrolled, StatusCodes.Status403Forbidden, http);
+
+            var primary = factors.First();
+            var challengeId = await mfa.StartChallengeAsync(user.Id, primary, ct);
+            var remainingCodes = await mfa.CountRemainingCodesAsync(user.Id, ct);
+
+            // The counters are NOT reset here: the login is not complete until
+            // the second factor succeeds.
+            return Results.Ok(new MfaRequiredResponse(
+                true,
+                challengeId,
+                factors.Select(f => new FactorResponse(
+                    f.Id,
+                    f.FactorType.ToString(),
+                    f.IsPrimary,
+                    Verified: true,
+                    f.MaskedDestination,
+                    RemainingCodes: f.FactorType == MfaFactorType.RecoveryCode
+                        ? remainingCodes
+                        : null)).ToArray()));
+        }
+
+        await guard.ResetAsync(accountKey, ct);
+
         user.LastLoginAt = clock.UtcNow;
         await users.UpdateAsync(user);
 
-        // MFA lands in Phase 4; until then a password login is complete.
+        await events.WriteAsync(SecurityEventType.LoginAttempt, succeeded: true,
+            user.Id, ip, agent, new { mfa = false }, ct);
+
         var pair = await auth.IssueAsync(user, ContextFrom(http), mfaSatisfied: false, ct);
 
         return Results.Ok(ToResponse(pair));
+    }
+
+    private static IResult Locked(LockoutState state, HttpContext http)
+    {
+        var seconds = (int)Math.Ceiling(state.RetryAfter?.TotalSeconds ?? 60);
+        http.Response.Headers.RetryAfter = seconds.ToString();
+
+        return Problem(
+            new Application.Common.Models.Error(
+                "auth.locked",
+                $"Çok fazla deneme. {seconds / 60} dk {seconds % 60} sn sonra tekrar dene."),
+            StatusCodes.Status423Locked,
+            http);
     }
 
     private static async Task<IResult> RefreshAsync(
@@ -236,9 +332,19 @@ public static class AuthEndpoints
 
     // ── helpers ──────────────────────────────────────────────────────────
 
-    /// <summary>A real PBKDF2 hash, so the unknown-user path does equivalent work.</summary>
-    private const string DummyHash =
-        "AQAAAAIAAYagAAAAEJ8Z1Ys0qkZ3mKk0wvQ0ZQ0gqZ0Y0Z0Y0Z0Y0Z0Y0Z0Y0Z0Y0Z0Y0Z0Y0Z0Y0Z0Yw==";
+    /// <summary>
+    /// A REAL PBKDF2 hash, produced once by the configured hasher, so the
+    /// unknown-user branch does equivalent work to a genuine verification.
+    ///
+    /// It must not be a hand-written constant: a string that is not valid base64
+    /// makes VerifyHashedPassword throw, turning the timing mitigation into a
+    /// 500 — which is a louder oracle than the timing difference it was meant to
+    /// hide. Computed lazily so the cost lands once, not per request.
+    /// </summary>
+    private static string? _dummyHash;
+
+    private static string DummyHashFor(IPasswordHasher<AppUser> hasher)
+        => _dummyHash ??= hasher.HashPassword(new AppUser(), "not-a-real-password");
 
     private static Guid? UserId(ClaimsPrincipal principal)
         => Guid.TryParse(principal.FindFirstValue("sub"), out var id) ? id : null;

@@ -37,6 +37,15 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<DatabaseSeeder>();
         services.AddSingleton<IEmailSender, LoggingEmailSender>();
+        services.AddSingleton<ISmsSender, LoggingSmsSender>();
+
+        // MFA (Phase 4)
+        services.AddDataProtection();
+        services.AddSingleton<TotpService>();
+        services.AddSingleton<MfaChallengeStore>();
+        services.AddSingleton<BruteForceGuard>();
+        services.AddScoped<MfaService>();
+        services.AddScoped<SecurityEventWriter>();
 
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);

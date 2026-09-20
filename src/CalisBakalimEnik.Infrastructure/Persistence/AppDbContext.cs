@@ -16,6 +16,9 @@ public sealed class AppDbContext(
 {
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Device> Devices => Set<Device>();
+    public DbSet<MfaFactor> MfaFactors => Set<MfaFactor>();
+    public DbSet<MfaRecoveryCode> MfaRecoveryCodes => Set<MfaRecoveryCode>();
+    public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

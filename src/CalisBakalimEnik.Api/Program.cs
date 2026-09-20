@@ -34,16 +34,20 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 
-    foreach (var cidr in builder.Configuration.GetSection("Cloudflare:TrustedNetworks").Get<string[]>() ?? [])
-    {
-        var parts = cidr.Split('/');
-        if (parts.Length == 2
-            && System.Net.IPAddress.TryParse(parts[0], out var prefix)
-            && int.TryParse(parts[1], out var length))
-        {
-            options.KnownNetworks.Add(new IPNetwork(prefix, length));
-        }
-    }
+    // Configured ranges win; otherwise Cloudflare's published list. Development
+    // has neither, which leaves the trust list EMPTY — ForwardedHeaders then
+    // ignores the header entirely and the socket address is used, which is the
+    // safe failure mode.
+    var configured = builder.Configuration
+        .GetSection("Cloudflare:TrustedNetworks").Get<string[]>() ?? [];
+
+    var trusted = configured.Length > 0
+        ? CloudflareRanges.Parse(configured)
+        : builder.Environment.IsProduction()
+            ? CloudflareRanges.Parse(CloudflareRanges.Published)
+            : [];
+
+    foreach (var network in trusted) options.KnownNetworks.Add(network);
 });
 
 var app = builder.Build();
@@ -67,6 +71,8 @@ app.UseAuthorization();
 
 app.MapSystemEndpoints();
 app.MapAuthEndpoints();
+app.MapMfaEndpoints();
+app.MapAccountSecurityEndpoints();
 
 // Seed the global roles and their permission claims. Idempotent, and outside any
 // migration so tightening a role in code actually tightens it in the database.

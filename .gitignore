@@ -495,3 +495,4 @@ logs/
 # Dev-only artefacts
 jwt-dev-key.pem
 mail-outbox.log
+sms-outbox.log
