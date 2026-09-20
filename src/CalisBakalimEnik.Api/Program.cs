@@ -24,6 +24,37 @@ builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 
+// The Flutter WEB build is a different origin from the API, so without this it
+// cannot make a single call — the browser blocks the preflight.
+//
+// An explicit allowlist, never AllowAnyOrigin: the refresh token travels in a
+// credentialed request, and browsers reject AllowAnyOrigin + AllowCredentials
+// anyway. See docs/SECURITY.md §8.
+const string corsPolicy = "app";
+
+builder.Services.AddCors(options =>
+{
+    var origins = builder.Configuration
+        .GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+
+    options.AddPolicy(corsPolicy, policy =>
+    {
+        if (origins.Length == 0)
+        {
+            // No origins configured: allow nothing rather than everything.
+            policy.WithOrigins();
+            return;
+        }
+
+        policy.WithOrigins(origins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()
+            // The client reads these, so they must be exposed explicitly.
+            .WithExposedHeaders("X-Correlation-Id", "Retry-After", "X-Update-Available");
+    });
+});
+
 // Traffic arrives through a Cloudflare Tunnel. Trust ONLY Cloudflare: an empty
 // KnownNetworks list means "trust everyone", which lets any caller spoof the client
 // IP and reset another user's rate-limit bucket. See docs/SECURITY.md §1.
@@ -53,6 +84,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+app.UseCors(corsPolicy);
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseRequestLogging();
