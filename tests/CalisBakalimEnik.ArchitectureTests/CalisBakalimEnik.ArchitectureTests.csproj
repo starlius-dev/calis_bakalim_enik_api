@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CalisBakalimEnik.Api\CalisBakalimEnik.Api.csproj" />
+    <ProjectReference Include="..\..\src\CalisBakalimEnik.Infrastructure\CalisBakalimEnik.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

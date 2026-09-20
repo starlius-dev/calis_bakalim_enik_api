@@ -491,3 +491,7 @@ logs/
 
 # Local secrets
 **/appsettings.Local.json
+
+# Dev-only artefacts
+jwt-dev-key.pem
+mail-outbox.log

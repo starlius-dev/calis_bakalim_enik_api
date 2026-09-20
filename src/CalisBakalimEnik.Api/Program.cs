@@ -1,10 +1,12 @@
 using CalisBakalimEnik.Api.Extensions;
+using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Api.Features.System;
 using CalisBakalimEnik.Api.Middleware;
 using CalisBakalimEnik.Api.Services;
 using CalisBakalimEnik.Application;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Infrastructure;
+using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 
@@ -15,6 +17,7 @@ builder.Host.ConfigureSerilog();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApiVersioningSetup();
+builder.Services.AddAuthSetup(builder.Configuration);
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
@@ -55,11 +58,22 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// Authentication, the JWT denylist, current-user resolution, rate limiting and
-// authorization slot in here in Phases 3 and 4. Order is load-bearing: current-user
-// resolution must sit AFTER authentication because it reads a validated claim.
+// Order is load-bearing: the denylist and current-user resolution both read a
+// VALIDATED claim, so they must sit after authentication. Rate limiting joins in
+// Phase 4. See docs/ARCHITECTURE.md §2.
+app.UseAuthentication();
+app.UseMiddleware<JwtDenylistMiddleware>();
+app.UseAuthorization();
 
 app.MapSystemEndpoints();
+app.MapAuthEndpoints();
+
+// Seed the global roles and their permission claims. Idempotent, and outside any
+// migration so tightening a role in code actually tightens it in the database.
+using (var scope = app.Services.CreateScope())
+{
+    await scope.ServiceProvider.GetRequiredService<DatabaseSeeder>().SeedAsync();
+}
 
 try
 {

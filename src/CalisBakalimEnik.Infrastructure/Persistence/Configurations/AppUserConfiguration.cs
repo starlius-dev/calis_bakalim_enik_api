@@ -22,6 +22,21 @@ public sealed class AppUserConfiguration : IEntityTypeConfiguration<AppUser>
         // the design called for dropping them in favour of per-tenant partial
         // indexes; that is wrong here. See docs/DATABASE.md §3.
 
+        // Identity's own EmailIndex is NOT unique — it enforces uniqueness only in
+        // UserManager, so two concurrent registrations can race past it and create
+        // two accounts on one address. Email is the global identity here, so the
+        // database enforces it. Filtered on deleted_at so a purged account's
+        // address becomes reusable.
+        builder.HasIndex(u => u.NormalizedEmail)
+            .HasDatabaseName("ux_users_normalized_email")
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL");
+
+        builder.HasIndex(u => u.NormalizedUserName)
+            .HasDatabaseName("ux_users_normalized_user_name")
+            .IsUnique()
+            .HasFilter("deleted_at IS NULL");
+
         builder.HasIndex(u => u.Status);
         builder.HasQueryFilter(u => u.DeletedAt == null);
     }

@@ -33,6 +33,11 @@ public static class DependencyInjection
         AddIdentity(services);
         AddRedis(services, configuration);
 
+        services.AddSingleton<ITokenService, TokenService>();
+        services.AddScoped<AuthService>();
+        services.AddScoped<DatabaseSeeder>();
+        services.AddSingleton<IEmailSender, LoggingEmailSender>();
+
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);
 
