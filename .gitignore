@@ -488,3 +488,6 @@ docs/
 
 # Serilog rolling files
 logs/
+
+# Local secrets
+**/appsettings.Local.json
