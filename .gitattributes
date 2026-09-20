@@ -1,0 +1,15 @@
+# Default: let git normalise text in the repo, check out native on Windows.
+* text=auto
+
+# Shell scripts and anything the Linux server executes MUST stay LF. A CRLF
+# checkout copied to the box fails with "\r: command not found", which reads as
+# a mysterious syntax error rather than a line-ending problem.
+*.sh        text eol=lf
+*.service   text eol=lf
+*.env       text eol=lf
+*.sql       text eol=lf
+
+# Keep generated/binary content out of diffs.
+*.png       binary
+*.jpg       binary
+*.ttf       binary
