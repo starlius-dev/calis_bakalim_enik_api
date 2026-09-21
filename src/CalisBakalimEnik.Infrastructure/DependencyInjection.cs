@@ -3,6 +3,7 @@ using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
+using CalisBakalimEnik.Infrastructure.Plan;
 using CalisBakalimEnik.Infrastructure.Persistence.Interceptors;
 using CalisBakalimEnik.Infrastructure.Services;
 using Microsoft.AspNetCore.Identity;
@@ -50,6 +51,9 @@ public static class DependencyInjection
         services.AddScoped<SecurityEventWriter>();
 
         AddNotifications(services, configuration);
+
+        // Phase 6 — domain
+        services.AddScoped<TaskReminders>();
 
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);

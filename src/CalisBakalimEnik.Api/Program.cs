@@ -1,6 +1,7 @@
 using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Api.Features.Notifications;
+using CalisBakalimEnik.Api.Features.Plan;
 using CalisBakalimEnik.Api.Features.System;
 using CalisBakalimEnik.Api.Middleware;
 using CalisBakalimEnik.Api.Services;
@@ -117,6 +118,7 @@ app.MapMfaEndpoints();
 app.MapAccountSecurityEndpoints();
 app.MapNotificationEndpoints();
 app.MapDeviceEndpoints();
+app.MapTaskEndpoints();
 
 // Seed the global roles and their permission claims. Idempotent, and outside any
 // migration so tightening a role in code actually tightens it in the database.

@@ -3,6 +3,7 @@ using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Common;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Domain.Notifications;
+using CalisBakalimEnik.Domain.Plan;
 using CalisBakalimEnik.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -30,6 +31,10 @@ public sealed class AppDbContext(
     public DbSet<NotificationPreference> NotificationPreferences =>
         Set<NotificationPreference>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    // Phase 6. An OwnedEntity: the global ownership filter applies by
+    // convention, so no query in the task endpoints filters by owner by hand.
+    public DbSet<TaskItem> Tasks => Set<TaskItem>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
