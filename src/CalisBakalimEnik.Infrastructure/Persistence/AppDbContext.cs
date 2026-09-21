@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Common;
 using CalisBakalimEnik.Domain.Identity;
+using CalisBakalimEnik.Domain.Notifications;
 using CalisBakalimEnik.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -19,6 +20,16 @@ public sealed class AppDbContext(
     public DbSet<MfaFactor> MfaFactors => Set<MfaFactor>();
     public DbSet<MfaRecoveryCode> MfaRecoveryCodes => Set<MfaRecoveryCode>();
     public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
+
+    // Phase 5. These carry a UserId rather than an OwnerId on purpose: the
+    // outbox processor has no request to resolve a current user from, and the
+    // ownership filter would hide every row from it. See Notification's remarks.
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<NotificationDelivery> NotificationDeliveries =>
+        Set<NotificationDelivery>();
+    public DbSet<NotificationPreference> NotificationPreferences =>
+        Set<NotificationPreference>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

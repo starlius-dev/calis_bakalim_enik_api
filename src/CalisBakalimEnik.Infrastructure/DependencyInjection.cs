@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Infrastructure.Identity;
+using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using CalisBakalimEnik.Infrastructure.Persistence.Interceptors;
 using CalisBakalimEnik.Infrastructure.Services;
@@ -48,10 +49,40 @@ public static class DependencyInjection
         services.AddScoped<MfaService>();
         services.AddScoped<SecurityEventWriter>();
 
+        AddNotifications(services, configuration);
+
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);
 
         return services;
+    }
+
+    /// <summary>Phase 5 — notifications, the outbox and its two loops.</summary>
+    private static void AddNotifications(
+        IServiceCollection services, IConfiguration configuration)
+    {
+        var section = configuration.GetSection(PushOptions.SectionName);
+        services.Configure<PushOptions>(section);
+
+        var options = section.Get<PushOptions>() ?? new PushOptions();
+
+        if (options.UsesFcm)
+        {
+            services.AddSingleton<IPushSender, FcmPushSender>();
+        }
+        else
+        {
+            // Unlike email, this is NOT refused in production: the app is
+            // usable without push — the in-app inbox still works — and iOS push
+            // is blocked on an Apple Developer membership anyway.
+            services.AddSingleton<IPushSender, LoggingPushSender>();
+        }
+
+        services.AddScoped<NotificationService>();
+        services.AddScoped<NotificationDispatcher>();
+
+        services.AddHostedService<OutboxProcessor>();
+        services.AddHostedService<ReminderScheduler>();
     }
 
     private static void AddEmail(IServiceCollection services, IConfiguration configuration)

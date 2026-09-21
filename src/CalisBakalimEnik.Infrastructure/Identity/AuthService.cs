@@ -1,6 +1,8 @@
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Application.Common.Models;
 using CalisBakalimEnik.Domain.Identity;
+using CalisBakalimEnik.Domain.Notifications;
+using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +28,7 @@ public sealed class AuthService(
     ITokenService tokens,
     IClock clock,
     IOptions<JwtOptions> options,
+    NotificationService notifications,
     ILogger<AuthService> logger)
 {
     private readonly JwtOptions _options = options.Value;
@@ -34,7 +37,52 @@ public sealed class AuthService(
         AppUser user, AuthContext context, bool mfaSatisfied, CancellationToken ct)
     {
         var family = Guid.CreateVersion7();
+
+        // Queued BEFORE the pair is saved, so the notification, its outbox row
+        // and the new session all land in one SaveChanges — the outbox
+        // guarantee only holds if they share a transaction.
+        await AlertOnUnknownDeviceAsync(user, context, ct);
+
         return await IssuePairAsync(user, family, null, context, mfaSatisfied, ct);
+    }
+
+    /// <summary>
+    /// Tells the user when their account is signed into from a device they have
+    /// not used before.
+    /// </summary>
+    /// <remarks>
+    /// Only on a FRESH sign-in — a rotation is the same session continuing, and
+    /// alerting on it would train the user to ignore the alert.
+    ///
+    /// The first sign-in of a new account is skipped: there is nothing
+    /// suspicious about it, and an alert about the device you are holding is
+    /// noise. <see cref="NotificationType.SecurityAlert"/> ignores quiet hours,
+    /// which is the point of the type.
+    /// </remarks>
+    private async Task AlertOnUnknownDeviceAsync(
+        AppUser user, AuthContext context, CancellationToken ct)
+    {
+        var agent = context.UserAgent;
+        if (string.IsNullOrWhiteSpace(agent)) return;
+
+        var history = await db.RefreshTokens
+            .Where(t => t.UserId == user.Id)
+            .Select(t => t.UserAgent)
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (history.Count == 0) return;
+        if (history.Contains(agent)) return;
+
+        notifications.Queue(
+            user.Id,
+            NotificationType.SecurityAlert,
+            "Yeni bir cihazdan giriş yapıldı",
+            "Bu sen değilsen şifreni değiştir ve tüm oturumları kapat.",
+            route: "/hesap");
+
+        logger.LogInformation(
+            "Alerted {UserId} about a sign-in from an unrecognised device", user.Id);
     }
 
     /// <summary>
