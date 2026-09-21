@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
+using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using CalisBakalimEnik.Infrastructure.Plan;
@@ -148,26 +149,19 @@ public static partial class PlanEndpointsViews
         _ => "night",
     };
 
-    private static async Task<TimeZoneInfo> ZoneAsync(
-        AppDbContext db, Guid userId, CancellationToken ct)
-    {
-        var id = await db.Users
-            .Where(u => u.Id == userId)
-            .Select(u => u.TimeZone)
-            .FirstOrDefaultAsync(ct);
-
-        return QuietHours.Resolve(id);
-    }
+    // Zone and local-day arithmetic lives in UserDate. It used to be copied
+    // here, and the copies in the Health endpoints were the ones that drifted
+    // into using the UTC date.
+    private static Task<TimeZoneInfo> ZoneAsync(
+        AppDbContext db, Guid userId, CancellationToken ct) =>
+        UserDate.ZoneAsync(db, userId, ct);
 
     private static DateOnly Today(IClock clock, TimeZoneInfo zone) =>
-        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(clock.UtcNow, zone).DateTime);
+        UserDate.Today(clock.UtcNow, zone);
 
-    private static DateTimeOffset StartOfLocalDay(DateOnly day, TimeZoneInfo zone)
-    {
-        var local = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
-        return new DateTimeOffset(local, zone.GetUtcOffset(local)).ToUniversalTime();
-    }
+    private static DateTimeOffset StartOfLocalDay(DateOnly day, TimeZoneInfo zone) =>
+        UserDate.StartOfLocalDay(day, zone);
 
     private static DateTimeOffset EndOfLocalDay(DateOnly day, TimeZoneInfo zone) =>
-        StartOfLocalDay(day.AddDays(1), zone);
+        UserDate.EndOfLocalDay(day, zone);
 }

@@ -37,6 +37,27 @@ public static class UserDate
         DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(utcNow, zone).DateTime);
 
     /// <summary>
+    /// Midnight at the start of a local day, as an instant.
+    /// </summary>
+    /// <remarks>
+    /// The offset is read at that local day, not at today's, so a range that
+    /// spans a DST change does not slip by an hour at one end.
+    /// </remarks>
+    public static DateTimeOffset StartOfLocalDay(DateOnly day, TimeZoneInfo zone)
+    {
+        var local = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, zone.GetUtcOffset(local)).ToUniversalTime();
+    }
+
+    /// <summary>Exclusive: midnight at the start of the NEXT local day.</summary>
+    public static DateTimeOffset EndOfLocalDay(DateOnly day, TimeZoneInfo zone) =>
+        StartOfLocalDay(day.AddDays(1), zone);
+
+    /// <summary>The local day an instant falls on, for grouping by day.</summary>
+    public static DateOnly LocalDayOf(DateTimeOffset instant, TimeZoneInfo zone) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, zone).DateTime);
+
+    /// <summary>
     /// The user's stored zone, falling back to the app default when they have
     /// none — never to UTC, which is nobody's actual day.
     /// </summary>

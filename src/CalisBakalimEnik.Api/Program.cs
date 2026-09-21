@@ -126,6 +126,7 @@ app.MapContentEndpoints();
 app.MapMedicationEndpoints();
 app.MapWorkoutEndpoints();
 app.MapNutritionEndpoints();
+app.MapStatsEndpoints();
 
 // Seed the global roles and their permission claims. Idempotent, and outside any
 // migration so tightening a role in code actually tightens it in the database.
