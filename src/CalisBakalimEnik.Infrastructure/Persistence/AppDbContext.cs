@@ -4,6 +4,7 @@ using CalisBakalimEnik.Domain.Common;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Domain.Notifications;
 using CalisBakalimEnik.Domain.Content;
+using CalisBakalimEnik.Domain.Health;
 using CalisBakalimEnik.Domain.Plan;
 using CalisBakalimEnik.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -44,6 +45,22 @@ public sealed class AppDbContext(
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Event> Events => Set<Event>();
     public DbSet<Note> Notes => Set<Note>();
+
+    // Health (Phase 6). Exercises and foods are NOT owned entities: a system
+    // row has no owner, and the ownership filter would hide the catalogue.
+    public DbSet<Medication> Medications => Set<Medication>();
+    public DbSet<MedicationTime> MedicationTimes => Set<MedicationTime>();
+    public DbSet<MedicationDose> MedicationDoses => Set<MedicationDose>();
+    public DbSet<Exercise> Exercises => Set<Exercise>();
+    public DbSet<WorkoutPlan> WorkoutPlans => Set<WorkoutPlan>();
+    public DbSet<WorkoutPlanItem> WorkoutPlanItems => Set<WorkoutPlanItem>();
+    public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
+    public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
+    public DbSet<Food> Foods => Set<Food>();
+    public DbSet<Meal> Meals => Set<Meal>();
+    public DbSet<MealItem> MealItems => Set<MealItem>();
+    public DbSet<HealthGoal> HealthGoals => Set<HealthGoal>();
+    public DbSet<BodyMeasurement> BodyMeasurements => Set<BodyMeasurement>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

@@ -1,6 +1,7 @@
 using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Api.Features.Content;
+using CalisBakalimEnik.Api.Features.Health;
 using CalisBakalimEnik.Api.Features.Notifications;
 using CalisBakalimEnik.Api.Features.Plan;
 using CalisBakalimEnik.Api.Features.System;
@@ -122,6 +123,9 @@ app.MapDeviceEndpoints();
 app.MapTaskEndpoints();
 app.MapPlanEndpoints();
 app.MapContentEndpoints();
+app.MapMedicationEndpoints();
+app.MapWorkoutEndpoints();
+app.MapNutritionEndpoints();
 
 // Seed the global roles and their permission claims. Idempotent, and outside any
 // migration so tightening a role in code actually tightens it in the database.

@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using CalisBakalimEnik.Application.Common.Interfaces;
+using CalisBakalimEnik.Infrastructure.Health;
 using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
@@ -55,6 +56,8 @@ public static class DependencyInjection
         // Phase 6 — domain
         services.AddScoped<TaskReminders>();
         services.AddScoped<ReminderSync>();
+        services.AddScoped<MedicationDoseService>();
+        services.AddHostedService<MedicationDoseGenerator>();
 
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);
