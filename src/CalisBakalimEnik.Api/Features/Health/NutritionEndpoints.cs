@@ -2,6 +2,7 @@ using System.Security.Claims;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Health;
+using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -164,7 +165,9 @@ public static class NutritionEndpoints
         var userId = MfaEndpoints.UserId(principal);
         if (userId is null) return Results.Unauthorized();
 
-        var date = onDate ?? DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+        // The USER's today, not UTC's: after midnight in Istanbul the two
+        // are different days, and the UTC one is yesterday's food.
+        var date = onDate ?? await UserDate.TodayAsync(db, userId.Value, clock, ct);
 
         var meals = await db.Meals
             .Where(m => m.OnDate == date)
@@ -247,7 +250,8 @@ public static class NutritionEndpoints
 
         if (food is null) return Invalid("foodId", "Yemek bulunamadı.");
 
-        var date = request.OnDate ?? DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+        var date = request.OnDate
+                   ?? await UserDate.TodayAsync(db, userId.Value, clock, ct);
 
         var meal = await db.Meals.FirstOrDefaultAsync(
             m => m.OnDate == date && m.MealType == type, ct);
@@ -375,12 +379,14 @@ public static class NutritionEndpoints
         ClaimsPrincipal principal,
         CancellationToken ct)
     {
-        if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
+        var userId = MfaEndpoints.UserId(principal);
+        if (userId is null) return Results.Unauthorized();
 
         if (request.WeightKg is <= 0 or > 500)
             return Invalid("weightKg", "Geçerli bir kilo gir.");
 
-        var date = request.OnDate ?? DateOnly.FromDateTime(clock.UtcNow.UtcDateTime);
+        var date = request.OnDate
+                   ?? await UserDate.TodayAsync(db, userId.Value, clock, ct);
 
         var measurement = await db.BodyMeasurements
             .FirstOrDefaultAsync(m => m.OnDate == date, ct);

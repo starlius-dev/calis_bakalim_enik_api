@@ -2,6 +2,7 @@ using System.Security.Claims;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Health;
+using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -229,6 +230,7 @@ public static class WorkoutEndpoints
         db.WorkoutPlans.Add(plan);
 
         short position = 0;
+        var created = new List<PlanItemResponse>();
 
         foreach (var item in request.Items ?? [])
         {
@@ -243,7 +245,7 @@ public static class WorkoutEndpoints
             if (item.TargetReps is null && item.TargetSeconds is null)
                 return Invalid("items", "Tekrar ya da süre hedefi gerekli.");
 
-            db.WorkoutPlanItems.Add(new WorkoutPlanItem
+            var line = new WorkoutPlanItem
             {
                 PlanId = plan.Id,
                 ExerciseId = item.ExerciseId,
@@ -251,13 +253,26 @@ public static class WorkoutEndpoints
                 TargetSets = item.TargetSets < 1 ? (short)1 : item.TargetSets,
                 TargetReps = item.TargetReps,
                 TargetSeconds = item.TargetSeconds,
-            });
+            };
+
+            db.WorkoutPlanItems.Add(line);
+
+            var name = await db.Exercises
+                .Where(e => e.Id == item.ExerciseId)
+                .Select(e => e.Name)
+                .FirstAsync(ct);
+
+            created.Add(new PlanItemResponse(
+                line.Id, line.ExerciseId, name, line.Position,
+                line.TargetSets, line.TargetReps, line.TargetSeconds));
         }
 
         await db.SaveChangesAsync(ct);
 
+        // The items, not an empty list: a caller that renders what it just
+        // created would otherwise show a plan with no exercises in it.
         return Results.Created($"/api/v1/workout-plans/{plan.Id}", new WorkoutPlanResponse(
-            plan.Id, plan.Name, plan.DaysOfWeek, []));
+            plan.Id, plan.Name, plan.DaysOfWeek, created));
     }
 
     private static async Task<IResult> DeletePlanAsync(
@@ -296,7 +311,8 @@ public static class WorkoutEndpoints
         ClaimsPrincipal principal,
         CancellationToken ct)
     {
-        if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
+        var userId = MfaEndpoints.UserId(principal);
+        if (userId is null) return Results.Unauthorized();
 
         if (request.PlanId is not null &&
             !await db.WorkoutPlans.AnyAsync(p => p.Id == request.PlanId, ct))
@@ -309,7 +325,7 @@ public static class WorkoutEndpoints
             PlanId = request.PlanId,
             Status = WorkoutStatus.Active,
             ScheduledOn = request.ScheduledOn
-                          ?? DateOnly.FromDateTime(clock.UtcNow.UtcDateTime),
+                          ?? await UserDate.TodayAsync(db, userId.Value, clock, ct),
             StartedAt = clock.UtcNow,
         };
 

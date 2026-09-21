@@ -4,6 +4,7 @@ using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Health;
 using CalisBakalimEnik.Infrastructure.Health;
 using CalisBakalimEnik.Infrastructure.Notifications;
+using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -119,7 +120,8 @@ public static class MedicationEndpoints
         ClaimsPrincipal principal,
         CancellationToken ct)
     {
-        if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
+        var userId = MfaEndpoints.UserId(principal);
+        if (userId is null) return Results.Unauthorized();
         if (Invalid(request) is { } problem) return problem;
 
         var medication = new Medication
@@ -133,7 +135,7 @@ public static class MedicationEndpoints
             StockUnit = request.StockUnit,
             LowStockAt = request.LowStockAt,
             StartedOn = request.StartedOn
-                        ?? DateOnly.FromDateTime(clock.UtcNow.UtcDateTime),
+                        ?? await UserDate.TodayAsync(db, userId.Value, clock, ct),
             EndedOn = request.EndedOn,
         };
 
