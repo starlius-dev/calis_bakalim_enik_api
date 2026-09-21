@@ -15,7 +15,9 @@ public sealed record CreateTaskRequest(
     string? Priority,
     DateTimeOffset? DueAt,
     DateTimeOffset? ReminderAt,
-    Guid? ParentTaskId);
+    Guid? ParentTaskId,
+    Guid? CourseId,
+    Guid? ProjectId);
 
 public sealed record UpdateTaskRequest(
     string? Title,
@@ -24,8 +26,12 @@ public sealed record UpdateTaskRequest(
     string? Priority,
     DateTimeOffset? DueAt,
     DateTimeOffset? ReminderAt,
+    Guid? CourseId,
+    Guid? ProjectId,
     bool ClearDueAt = false,
-    bool ClearReminderAt = false);
+    bool ClearReminderAt = false,
+    bool ClearCourseId = false,
+    bool ClearProjectId = false);
 
 public sealed record TaskResponse(
     Guid Id,
@@ -37,6 +43,8 @@ public sealed record TaskResponse(
     DateTimeOffset? ReminderAt,
     DateTimeOffset? CompletedAt,
     Guid? ParentTaskId,
+    Guid? CourseId,
+    Guid? ProjectId,
     DateTimeOffset CreatedAt);
 
 /// <summary>
@@ -77,6 +85,7 @@ public static class TaskEndpoints
         string? status = null,
         string? priority = null,
         string? scope = null,
+        Guid? courseId = null,
         DateTimeOffset? dueBefore = null,
         bool includeCompleted = true,
         int take = 100)
@@ -136,6 +145,7 @@ public static class TaskEndpoints
             }
         }
 
+        if (courseId is not null) query = query.Where(t => t.CourseId == courseId);
         if (dueBefore is not null) query = query.Where(t => t.DueAt <= Utc(dueBefore));
         if (!includeCompleted) query = query.Where(t => t.CompletedAt == null);
 
@@ -189,6 +199,26 @@ public static class TaskEndpoints
             });
         }
 
+        // A course or project belonging to someone else is invisible to these
+        // queries, so this doubles as the ownership check on each link.
+        if (request.CourseId is not null &&
+            !await db.Courses.AnyAsync(c => c.Id == request.CourseId, ct))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["courseId"] = ["Ders bulunamadı."],
+            });
+        }
+
+        if (request.ProjectId is not null &&
+            !await db.Projects.AnyAsync(p => p.Id == request.ProjectId, ct))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["projectId"] = ["Proje bulunamadı."],
+            });
+        }
+
         var task = new TaskItem
         {
             Title = request.Title.Trim(),
@@ -197,6 +227,8 @@ public static class TaskEndpoints
             DueAt = Utc(request.DueAt),
             ReminderAt = Utc(request.ReminderAt),
             ParentTaskId = request.ParentTaskId,
+            CourseId = request.CourseId,
+            ProjectId = request.ProjectId,
         };
 
         // OwnerId is stamped by the interceptor on insert; it is never taken
@@ -264,6 +296,34 @@ public static class TaskEndpoints
 
         if (request.ClearReminderAt) task.ReminderAt = null;
         else if (request.ReminderAt is not null) task.ReminderAt = Utc(request.ReminderAt);
+
+        if (request.ClearCourseId) task.CourseId = null;
+        else if (request.CourseId is not null)
+        {
+            if (!await db.Courses.AnyAsync(c => c.Id == request.CourseId, ct))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["courseId"] = ["Ders bulunamadı."],
+                });
+            }
+
+            task.CourseId = request.CourseId;
+        }
+
+        if (request.ClearProjectId) task.ProjectId = null;
+        else if (request.ProjectId is not null)
+        {
+            if (!await db.Projects.AnyAsync(p => p.Id == request.ProjectId, ct))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["projectId"] = ["Proje bulunamadı."],
+                });
+            }
+
+            task.ProjectId = request.ProjectId;
+        }
 
         await reminders.SyncAsync(task, ct);
         await db.SaveChangesAsync(ct);
@@ -382,6 +442,8 @@ public static class TaskEndpoints
         task.ReminderAt,
         task.CompletedAt,
         task.ParentTaskId,
+        task.CourseId,
+        task.ProjectId,
         task.CreatedAt);
 
     private static bool TryParseState(string value, out TaskState state) =>

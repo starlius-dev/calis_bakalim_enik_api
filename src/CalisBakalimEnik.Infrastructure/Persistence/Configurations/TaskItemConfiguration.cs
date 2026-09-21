@@ -1,3 +1,4 @@
+using CalisBakalimEnik.Domain.Content;
 using CalisBakalimEnik.Domain.Plan;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -34,5 +35,19 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
             .WithMany()
             .HasForeignKey(t => t.ParentTaskId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Course>()
+            .WithMany()
+            .HasForeignKey(t => t.CourseId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(t => t.ProjectId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(t => t.CourseId)
+            .HasDatabaseName("ix_tasks_course")
+            .HasFilter("course_id IS NOT NULL AND deleted_at IS NULL");
     }
 }

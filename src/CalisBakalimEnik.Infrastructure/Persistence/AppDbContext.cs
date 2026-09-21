@@ -3,6 +3,7 @@ using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Common;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Domain.Notifications;
+using CalisBakalimEnik.Domain.Content;
 using CalisBakalimEnik.Domain.Plan;
 using CalisBakalimEnik.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -38,6 +39,11 @@ public sealed class AppDbContext(
     public DbSet<Term> Terms => Set<Term>();
     public DbSet<ScheduleEntry> ScheduleEntries => Set<ScheduleEntry>();
     public DbSet<FocusSession> FocusSessions => Set<FocusSession>();
+
+    public DbSet<Course> Courses => Set<Course>();
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<Event> Events => Set<Event>();
+    public DbSet<Note> Notes => Set<Note>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

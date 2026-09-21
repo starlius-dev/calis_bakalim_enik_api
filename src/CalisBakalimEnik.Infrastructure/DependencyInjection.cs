@@ -54,6 +54,7 @@ public static class DependencyInjection
 
         // Phase 6 — domain
         services.AddScoped<TaskReminders>();
+        services.AddScoped<ReminderSync>();
 
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);

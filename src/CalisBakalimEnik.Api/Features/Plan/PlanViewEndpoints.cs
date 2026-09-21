@@ -120,7 +120,8 @@ public static partial class PlanEndpointsViews
             AgendaExpander.Expand(entries, today, today, zone),
             tasks.Select(t => new TaskResponse(
                 t.Id, t.Title, t.Notes, t.Status.ToString(), t.Priority.ToString(),
-                t.DueAt, t.ReminderAt, t.CompletedAt, t.ParentTaskId, t.CreatedAt)).ToList(),
+                t.DueAt, t.ReminderAt, t.CompletedAt, t.ParentTaskId,
+                t.CourseId, t.ProjectId, t.CreatedAt)).ToList(),
             dueToday,
             overdue,
             unread,

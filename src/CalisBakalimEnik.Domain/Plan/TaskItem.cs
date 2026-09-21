@@ -38,12 +38,17 @@ public enum TaskPriority : short
 /// the global ownership filter actually protects: someone else's task is
 /// invisible, not merely un-returned by a handler that remembered to filter.
 ///
-/// Course and project links arrive with the Content pillar — the columns are
-/// deliberately absent until the tables they would reference exist, rather than
-/// present and pointing at nothing.
 /// </remarks>
 public class TaskItem : OwnedEntity
 {
+    /// <summary>
+    /// SET NULL on both, not cascade: deleting a course must not silently take
+    /// the work that belonged to it.
+    /// </summary>
+    public Guid? CourseId { get; set; }
+
+    public Guid? ProjectId { get; set; }
+
     public string Title { get; set; } = string.Empty;
     public string? Notes { get; set; }
 
