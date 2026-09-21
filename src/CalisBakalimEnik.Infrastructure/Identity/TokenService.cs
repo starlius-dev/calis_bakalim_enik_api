@@ -46,6 +46,7 @@ public sealed class TokenService : ITokenService, IDisposable
             new(JwtRegisteredClaimNames.Jti, jti.ToString()),
             new(JwtRegisteredClaimNames.Email, subject.Email),
             new("name", subject.DisplayName),
+            new("sid", subject.SessionId.ToString()),
             new("ver", "1"),
         };
 

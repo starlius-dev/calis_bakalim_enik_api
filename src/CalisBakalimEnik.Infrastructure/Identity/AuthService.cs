@@ -93,13 +93,26 @@ public sealed class AuthService(
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>Logout-everywhere, password change, role change.</summary>
+    /// <summary>
+    /// Logout-everywhere, password change, role change.
+    /// </summary>
+    /// <param name="exceptFamilyId">
+    /// The caller's own session, spared. A password change revokes the OTHER
+    /// sessions — signing the user out of the device they are actively typing
+    /// on, moments after they proved the current password, is not security.
+    /// A reset (where the old password is presumed stolen) passes null.
+    /// </param>
     public async Task RevokeAllForUserAsync(
-        Guid userId, RefreshRevokedReason reason, CancellationToken ct)
+        Guid userId,
+        RefreshRevokedReason reason,
+        CancellationToken ct,
+        Guid? exceptFamilyId = null)
     {
         var now = clock.UtcNow;
         await db.RefreshTokens
-            .Where(t => t.UserId == userId && t.RevokedAt == null)
+            .Where(t => t.UserId == userId
+                        && t.RevokedAt == null
+                        && (exceptFamilyId == null || t.FamilyId != exceptFamilyId))
             .ExecuteUpdateAsync(
                 s => s.SetProperty(t => t.RevokedAt, now)
                       .SetProperty(t => t.RevokedReason, reason),
@@ -137,7 +150,8 @@ public sealed class AuthService(
             user.DisplayName,
             roles.ToArray(),
             permissions,
-            mfaSatisfied);
+            mfaSatisfied,
+            familyId);
 
         var accessToken = tokens.CreateAccessToken(subject, out var accessExpires, out _);
 

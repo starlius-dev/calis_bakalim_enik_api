@@ -78,7 +78,9 @@ public static class AccountSecurityEndpoints
         user.PasswordChangedAt = clock.UtcNow;
         await users.UpdateAsync(user);
 
-        await auth.RevokeAllForUserAsync(user.Id, RefreshRevokedReason.PasswordChange, ct);
+        // Every OTHER session, not this one: see RevokeAllForUserAsync.
+        await auth.RevokeAllForUserAsync(
+            user.Id, RefreshRevokedReason.PasswordChange, ct, SessionId(principal));
 
         await events.WriteAsync(SecurityEventType.PasswordChanged, succeeded: true,
             user.Id, MfaEndpoints.ClientIp(http), MfaEndpoints.UserAgent(http), null, ct);
@@ -163,12 +165,16 @@ public static class AccountSecurityEndpoints
         if (userId is null) return Results.Unauthorized();
 
         var now = clock.UtcNow;
+        var currentFamily = SessionId(principal);
 
+        // One live row per family — rotation revokes the row it replaces — so
+        // this is a list of sign-ins, not of rotations.
         var sessions = await db.RefreshTokens
             .Where(t => t.UserId == userId && t.RevokedAt == null && t.ExpiresAt > now)
             .OrderByDescending(t => t.IssuedAt)
             .Select(t => new SessionResponse(
-                t.Id, null, t.UserAgent, t.CreatedIp, t.IssuedAt, t.ExpiresAt, false))
+                t.Id, null, t.UserAgent, t.CreatedIp, t.IssuedAt, t.ExpiresAt,
+                currentFamily != null && t.FamilyId == currentFamily))
             .ToListAsync(ct);
 
         return Results.Ok(sessions);
@@ -203,4 +209,8 @@ public static class AccountSecurityEndpoints
 
         return Results.NoContent();
     }
+
+    /// <summary>The refresh-token family the caller's access token was issued from.</summary>
+    private static Guid? SessionId(ClaimsPrincipal principal)
+        => Guid.TryParse(principal.FindFirstValue("sid"), out var id) ? id : null;
 }

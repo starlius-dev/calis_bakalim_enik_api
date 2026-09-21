@@ -12,7 +12,12 @@ public sealed record AccessTokenSubject(
     string DisplayName,
     IReadOnlyCollection<string> Roles,
     IReadOnlyCollection<string> Permissions,
-    bool MfaSatisfied);
+    bool MfaSatisfied,
+    // The refresh-token FAMILY this access token was issued from. One family is
+    // one sign-in on one device, because rotation revokes the row it replaces,
+    // so exactly one live row per family. Carried as `sid` so the session list
+    // can mark the caller's own row and a password change can spare it.
+    Guid SessionId);
 
 public interface ITokenService
 {
