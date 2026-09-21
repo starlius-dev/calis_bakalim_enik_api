@@ -35,6 +35,9 @@ public sealed class AppDbContext(
     // Phase 6. An OwnedEntity: the global ownership filter applies by
     // convention, so no query in the task endpoints filters by owner by hand.
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
+    public DbSet<Term> Terms => Set<Term>();
+    public DbSet<ScheduleEntry> ScheduleEntries => Set<ScheduleEntry>();
+    public DbSet<FocusSession> FocusSessions => Set<FocusSession>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

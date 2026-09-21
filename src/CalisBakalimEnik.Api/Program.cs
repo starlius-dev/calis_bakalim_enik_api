@@ -119,6 +119,7 @@ app.MapAccountSecurityEndpoints();
 app.MapNotificationEndpoints();
 app.MapDeviceEndpoints();
 app.MapTaskEndpoints();
+app.MapPlanEndpoints();
 
 // Seed the global roles and their permission claims. Idempotent, and outside any
 // migration so tightening a role in code actually tightens it in the database.
