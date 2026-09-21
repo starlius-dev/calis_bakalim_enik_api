@@ -7,6 +7,7 @@ using CalisBakalimEnik.Application;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Infrastructure;
 using CalisBakalimEnik.Infrastructure.Persistence;
+using CalisBakalimEnik.Infrastructure.Services;
 using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 
@@ -92,6 +93,14 @@ app.UseRequestLogging();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+}
+else if (app.Services.GetRequiredService<IEmailSender>() is LoggingEmailSender)
+{
+    // Refuse to start rather than run a deployment where every confirmation
+    // link is appended to a local file. The symptom otherwise is a healthy
+    // service that nobody can finish signing up to.
+    throw new InvalidOperationException(
+        "Email:Provider must be Resend with an Email:ApiKey outside Development.");
 }
 
 // Order is load-bearing: the denylist and current-user resolution both read a

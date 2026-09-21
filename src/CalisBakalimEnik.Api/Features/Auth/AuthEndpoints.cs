@@ -3,8 +3,10 @@ using CalisBakalimEnik.Api.Middleware;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Infrastructure.Identity;
+using CalisBakalimEnik.Infrastructure.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace CalisBakalimEnik.Api.Features.Auth;
 
@@ -62,6 +64,7 @@ public static class AuthEndpoints
         RegisterRequest request,
         UserManager<AppUser> users,
         IEmailSender email,
+        IOptions<EmailOptions> links,
         IClock clock,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
@@ -71,10 +74,15 @@ public static class AuthEndpoints
 
         if (existing is not null)
         {
-            await email.SendAsync(
-                request.Email,
+            await SendQuietlyAsync(email, logger, request.Email,
                 "Çalış Bakalım Enik — kayıt denemesi",
-                "Bu adresle zaten bir hesap var. Sen değilsen görmezden gelebilirsin.",
+                $"""
+                 Bu adresle zaten bir hesap var, bu yüzden yeni bir hesap açmadık.
+
+                 Şifreni hatırlamıyorsan buradan sıfırlayabilirsin:
+
+                 {EmailLinks.ForgotPassword(links.Value)}
+                 """,
                 ct);
 
             logger.LogInformation("Registration attempted for an existing address");
@@ -106,25 +114,67 @@ public static class AuthEndpoints
         await users.AddToRoleAsync(user, Roles.User);
 
         var token = await users.GenerateEmailConfirmationTokenAsync(user);
-        await email.SendAsync(
-            request.Email,
+
+        await SendQuietlyAsync(email, logger, request.Email,
             "Çalış Bakalım Enik — e-postanı doğrula",
-            $"userId={user.Id}\ntoken={token}",
+            $"""
+             Merhaba {user.DisplayName},
+
+             Hesabını açmak için son bir adım kaldı. Aşağıdaki bağlantıya tıkla:
+
+             {EmailLinks.ConfirmEmail(links.Value, user.Id, token)}
+
+             Bağlantı 24 saat geçerli.
+             """,
             ct);
 
         return Results.NoContent();
     }
 
+    /// <summary>
+    /// Sends without letting a delivery failure change the response.
+    ///
+    /// Registration answers 204 whether or not the address exists. If a provider
+    /// outage turned one branch into a 500 while the other stayed 204, the
+    /// enumeration oracle this flow is built to avoid would be back — visible
+    /// exactly when nobody is watching. The failure goes to the log instead.
+    /// </summary>
+    private static async Task SendQuietlyAsync(
+        IEmailSender email,
+        ILogger logger,
+        string to,
+        string subject,
+        string body,
+        CancellationToken ct)
+    {
+        try
+        {
+            await email.SendAsync(to, subject, body, ct);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Email delivery failed. Subject={Subject}", subject);
+        }
+    }
+
     private static async Task<IResult> ConfirmEmailAsync(
         ConfirmEmailRequest request,
         UserManager<AppUser> users,
+        HttpContext http,
         CancellationToken ct)
     {
         var user = await users.FindByIdAsync(request.UserId);
-        if (user is null) return Results.NoContent();
+
+        // A dead link and an unknown user answer IDENTICALLY, so this still
+        // reveals nothing about which addresses exist — but a real person whose
+        // link expired now learns that, instead of seeing "confirmed" and then
+        // being unable to sign in.
+        if (user is null)
+            return Problem(AuthErrors.InvalidConfirmationToken, StatusCodes.Status400BadRequest, http);
 
         var result = await users.ConfirmEmailAsync(user, request.Token);
-        if (!result.Succeeded) return Results.NoContent();
+        if (!result.Succeeded)
+            return Problem(AuthErrors.InvalidConfirmationToken, StatusCodes.Status400BadRequest, http);
 
         user.Status = UserStatus.Active;
         await users.UpdateAsync(user);

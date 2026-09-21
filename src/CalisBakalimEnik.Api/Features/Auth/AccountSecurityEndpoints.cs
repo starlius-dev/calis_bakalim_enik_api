@@ -3,8 +3,10 @@ using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Persistence;
+using CalisBakalimEnik.Infrastructure.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace CalisBakalimEnik.Api.Features.Auth;
 
@@ -96,7 +98,9 @@ public static class AccountSecurityEndpoints
         ForgotPasswordRequest request,
         UserManager<AppUser> users,
         IEmailSender email,
+        IOptions<EmailOptions> links,
         SecurityEventWriter events,
+        ILogger<ForgotPasswordRequest> logger,
         HttpContext http,
         CancellationToken ct)
     {
@@ -106,11 +110,28 @@ public static class AccountSecurityEndpoints
         {
             var token = await users.GeneratePasswordResetTokenAsync(user);
 
-            await email.SendAsync(
-                request.Email,
-                "Çalış Bakalım Enik — şifre sıfırlama",
-                $"userId={user.Id}{Environment.NewLine}token={token}",
-                ct);
+            try
+            {
+                await email.SendAsync(
+                    request.Email,
+                    "Çalış Bakalım Enik — şifre sıfırlama",
+                    $"""
+                     Şifreni sıfırlamak için aşağıdaki bağlantıya tıkla:
+
+                     {EmailLinks.ResetPassword(links.Value, user.Id, token)}
+
+                     Bağlantı 30 dakika geçerli. Bu isteği sen yapmadıysan
+                     hiçbir şey yapmana gerek yok — şifren değişmedi.
+                     """,
+                    ct);
+            }
+            catch (Exception e)
+            {
+                // Same reasoning as registration: this endpoint answers 204 for
+                // every address, and a provider outage must not turn the known
+                // ones into 500s.
+                logger.LogError(e, "Password reset mail failed to send");
+            }
         }
 
         await events.WriteAsync(SecurityEventType.PasswordResetRequested, succeeded: true,
@@ -130,12 +151,34 @@ public static class AccountSecurityEndpoints
         CancellationToken ct)
     {
         var user = await users.FindByIdAsync(request.UserId);
-        if (user is null) return Results.NoContent();
+
+        // Same shape as confirmation: an unknown user and a dead link are
+        // indistinguishable, but a real person is told their link expired rather
+        // than being shown success and left with the old password.
+        if (user is null)
+        {
+            return MfaEndpoints.Problem(
+                AuthErrors.InvalidConfirmationToken,
+                StatusCodes.Status400BadRequest,
+                http);
+        }
 
         var result = await users.ResetPasswordAsync(user, request.Token, request.NewPassword);
 
         if (!result.Succeeded)
         {
+            // Identity reports a bad token and a weak password through the same
+            // channel; the client shows whichever it gets against the field.
+            var invalidToken = result.Errors.Any(e => e.Code.Contains("Token"));
+
+            if (invalidToken)
+            {
+                return MfaEndpoints.Problem(
+                    AuthErrors.InvalidConfirmationToken,
+                    StatusCodes.Status400BadRequest,
+                    http);
+            }
+
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["password"] = result.Errors.Select(e => e.Description).ToArray(),

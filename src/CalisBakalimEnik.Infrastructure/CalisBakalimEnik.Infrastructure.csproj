@@ -22,6 +22,12 @@
   <PropertyGroup>
   </PropertyGroup>
 
+  <!-- The mail HTML renderer is an implementation detail with sharp edges
+       (escaping, then linking), so it is tested directly rather than exposed. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="CalisBakalimEnik.UnitTests" />
+  </ItemGroup>
+
 
   <!-- Identity's token providers and the configuration builders used by the
        design-time factory live in the ASP.NET Core shared framework. Referencing

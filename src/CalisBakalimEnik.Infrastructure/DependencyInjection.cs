@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Persistence;
@@ -36,7 +37,7 @@ public static class DependencyInjection
         services.AddSingleton<ITokenService, TokenService>();
         services.AddScoped<AuthService>();
         services.AddScoped<DatabaseSeeder>();
-        services.AddSingleton<IEmailSender, LoggingEmailSender>();
+        AddEmail(services, configuration);
         services.AddSingleton<ISmsSender, LoggingSmsSender>();
 
         // MFA (Phase 4)
@@ -51,6 +52,32 @@ public static class DependencyInjection
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);
 
         return services;
+    }
+
+    private static void AddEmail(IServiceCollection services, IConfiguration configuration)
+    {
+        var section = configuration.GetSection(EmailOptions.SectionName);
+        services.Configure<EmailOptions>(section);
+
+        var options = section.Get<EmailOptions>() ?? new EmailOptions();
+
+        if (!options.UsesResend)
+        {
+            // Development only — Program.cs refuses to start elsewhere.
+            services.AddSingleton<IEmailSender, LoggingEmailSender>();
+            return;
+        }
+
+        services.AddHttpClient<IEmailSender, ResendEmailSender>(client =>
+        {
+            client.BaseAddress = new Uri("https://api.resend.com/");
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", options.ApiKey);
+
+            // Signup blocks on this call. A minute of waiting on a hung TLS
+            // handshake is worse for the user than a clear failure.
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
     }
 
     private static void AddIdentity(IServiceCollection services)

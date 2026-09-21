@@ -228,6 +228,9 @@ public static class AuthErrors
     public static readonly Error InvalidRefreshToken =
         new("auth.invalid_refresh_token", "Oturum süresi doldu. Tekrar giriş yap.");
 
+    public static readonly Error InvalidConfirmationToken =
+        new("auth.invalid_token", "Bu bağlantı geçersiz ya da süresi dolmuş.");
+
     public static readonly Error RefreshReuseDetected =
         new("auth.refresh_reuse", "Güvenlik nedeniyle tüm oturumlar kapatıldı.");
 }
