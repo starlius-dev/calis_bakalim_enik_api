@@ -165,6 +165,7 @@ public static class AdminEndpoints
         Guid id,
         AppDbContext db,
         AuthService auth,
+        ITokenService tokens,
         SecurityEventWriter events,
         IClock clock,
         ClaimsPrincipal principal,
@@ -192,6 +193,12 @@ public static class AdminEndpoints
         user.Status = UserStatus.Disabled;
         await db.SaveChangesAsync(ct);
         await auth.RevokeAllForUserAsync(id, RefreshRevokedReason.Admin, ct);
+
+        // Refresh tokens alone are not enough. This account is holding an
+        // access token good for up to fifteen more minutes, and the comment
+        // above is only true once that one is dead too — otherwise a disabled
+        // user carries on working for a quarter of an hour.
+        await tokens.RevokeIssuedBeforeAsync(id, clock.UtcNow, ct);
 
         await events.WriteAsync(
             SecurityEventType.RoleChanged, true, id,
@@ -248,6 +255,8 @@ public static class AdminEndpoints
         AppDbContext db,
         UserManager<AppUser> users,
         AuthService auth,
+        ITokenService tokens,
+        IClock clock,
         SecurityEventWriter events,
         ClaimsPrincipal principal,
         HttpContext http,
@@ -299,9 +308,13 @@ public static class AdminEndpoints
             if (!added.Succeeded) return Problem(added);
         }
 
-        // The permissions in a JWT are projected at sign-in, so the change
-        // does not reach an existing token until the session is cut.
+        // The permissions in a JWT are projected at sign-in, so the change does
+        // not reach an existing token until the session is cut — and cutting
+        // the refresh tokens does not cut the access token already issued. A
+        // demoted admin keeps their perm claims until it expires, which is
+        // exactly the window that matters.
         await auth.RevokeAllForUserAsync(id, RefreshRevokedReason.Admin, ct);
+        await tokens.RevokeIssuedBeforeAsync(id, clock.UtcNow, ct);
 
         await events.WriteAsync(
             SecurityEventType.RoleChanged, true, id,

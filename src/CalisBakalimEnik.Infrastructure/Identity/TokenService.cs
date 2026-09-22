@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -95,6 +96,31 @@ public sealed class TokenService : ITokenService, IDisposable
 
     public Task<bool> IsDenylistedAsync(Guid jti, CancellationToken ct = default)
         => _cache.ExistsAsync($"jwt:denylist:{jti}", ct);
+
+    public async Task RevokeIssuedBeforeAsync(
+        Guid userId, DateTimeOffset cutoff, CancellationToken ct = default)
+    {
+        // Held only for as long as a token issued before the cutoff could still
+        // be inside its own lifetime. After that the expiry does the work and
+        // the key is dead weight.
+        var ttl = TimeSpan.FromMinutes(_options.AccessTokenMinutes) + TimeSpan.FromMinutes(1);
+
+        await _cache.SetAsync(
+            $"jwt:cutoff:{userId}",
+            cutoff.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+            ttl,
+            ct);
+    }
+
+    public async Task<DateTimeOffset?> IssuedBeforeCutoffAsync(
+        Guid userId, CancellationToken ct = default)
+    {
+        var raw = await _cache.GetAsync($"jwt:cutoff:{userId}", ct);
+
+        return long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var at)
+            ? DateTimeOffset.FromUnixTimeSeconds(at)
+            : null;
+    }
 
     private static RSA LoadOrCreateKey(JwtOptions options, ILogger logger)
     {

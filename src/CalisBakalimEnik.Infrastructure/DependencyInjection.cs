@@ -7,6 +7,7 @@ using CalisBakalimEnik.Infrastructure.Persistence;
 using CalisBakalimEnik.Infrastructure.Plan;
 using CalisBakalimEnik.Infrastructure.Persistence.Interceptors;
 using CalisBakalimEnik.Infrastructure.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -43,7 +44,28 @@ public static class DependencyInjection
         AddEmail(services, configuration);
 
         // MFA (Phase 4)
-        services.AddDataProtection();
+        //
+        // TOTP secrets are encrypted with Data Protection, so the key ring IS
+        // the second factor. Left to itself it lands in ~/.aspnet on the host
+        // and is regenerated whenever that is not there — which in a container
+        // without a mounted volume means every redeploy silently locks out
+        // every user who enrolled an authenticator app. They would get
+        // "invalid code" for a correct code, forever, and the only way back in
+        // is a recovery code.
+        //
+        // SetApplicationName is half the fix: without it the discriminator is
+        // derived from the content root path, so MOVING the deployment
+        // directory invalidates the ring just as thoroughly as losing it.
+        var dataProtection = services
+            .AddDataProtection()
+            .SetApplicationName("CalisBakalimEnik");
+
+        var keyRing = configuration["DataProtection:KeyPath"];
+
+        if (!string.IsNullOrWhiteSpace(keyRing))
+        {
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keyRing));
+        }
         services.AddSingleton<TotpService>();
         services.AddSingleton<MfaChallengeStore>();
         services.AddSingleton<BruteForceGuard>();

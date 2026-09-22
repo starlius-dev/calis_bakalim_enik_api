@@ -32,4 +32,28 @@ public interface ITokenService
     Task DenylistAsync(Guid jti, DateTimeOffset expiresAt, CancellationToken ct = default);
 
     Task<bool> IsDenylistedAsync(Guid jti, CancellationToken ct = default);
+
+    /// <summary>
+    /// Invalidates every access token already issued to a user.
+    /// </summary>
+    /// <remarks>
+    /// The denylist can only revoke a token somebody is holding — the caller's
+    /// own. Nothing tracks the jti of a token issued to a DIFFERENT session, so
+    /// until this existed there was no way to revoke one: disabling an account,
+    /// demoting an admin and signing out every device all cut the refresh
+    /// tokens and left the access tokens alive for the rest of their fifteen
+    /// minutes. A disabled account that keeps working for fifteen minutes is
+    /// not disabled.
+    ///
+    /// One key per user rather than one per token: a cutoff instant, against
+    /// which every token's <c>nbf</c> is compared. It expires on its own after
+    /// the access-token lifetime, because a token older than that is refused by
+    /// its own expiry anyway.
+    /// </remarks>
+    Task RevokeIssuedBeforeAsync(
+        Guid userId, DateTimeOffset cutoff, CancellationToken ct = default);
+
+    /// <summary>The cutoff for a user, or null if there is none.</summary>
+    Task<DateTimeOffset?> IssuedBeforeCutoffAsync(
+        Guid userId, CancellationToken ct = default);
 }

@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Security.Claims;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Infrastructure.Identity;
@@ -79,10 +81,23 @@ internal sealed class ConfigureJwtBearer(
 }
 
 /// <summary>
-/// Stateless tokens cannot be un-issued, so logout-everywhere, password change
-/// and role change put the jti on a Redis denylist. One EXISTS per request, and
-/// bounded in size because entries expire on their own.
+/// Stateless tokens cannot be un-issued, so two Redis lookups stand in for it.
 /// </summary>
+/// <remarks>
+/// <para>The <b>denylist</b> revokes one token by its jti. It can only ever
+/// revoke a token somebody is holding, which in practice means the caller's
+/// own — logout, and the sign-out that follows a password change.</para>
+///
+/// <para>The <b>cutoff</b> revokes every token already issued to a user,
+/// because nothing tracks the jti of a token issued to another session.
+/// Without it, disabling an account or demoting an admin cut only the refresh
+/// tokens and left the access tokens valid for the rest of their fifteen
+/// minutes.</para>
+///
+/// <para>Two round trips to Redis per authenticated request, both O(1) and
+/// both against a local instance in production. That is the price of being
+/// able to revoke a session that is not the one asking.</para>
+/// </remarks>
 public sealed class JwtDenylistMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, ITokenService tokens)
@@ -96,8 +111,66 @@ public sealed class JwtDenylistMiddleware(RequestDelegate next)
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
             }
+
+            if (await IsBeforeCutoffAsync(context, tokens))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
         }
 
         await next(context);
+    }
+
+    /// <summary>
+    /// Whether this token was issued before its user's cutoff.
+    /// </summary>
+    /// <remarks>
+    /// Compared on <c>nbf</c>, which the token carries and which the handler
+    /// has already validated. A token with no readable <c>nbf</c> is treated as
+    /// revoked rather than as exempt — the alternative is a token that opts out
+    /// of revocation by omitting a claim.
+    /// </remarks>
+    private static async Task<bool> IsBeforeCutoffAsync(
+        HttpContext context, ITokenService tokens)
+    {
+        var subject = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                      ?? context.User.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(subject, out var userId)) return false;
+
+        var cutoff = await tokens.IssuedBeforeCutoffAsync(userId, context.RequestAborted);
+
+        return IsRevoked(cutoff, context.User.FindFirst("nbf")?.Value);
+    }
+
+    /// <summary>
+    /// Whether a token issued at <paramref name="notBefore"/> falls before the
+    /// user's cutoff.
+    /// </summary>
+    /// <remarks>
+    /// <para>A token whose <c>nbf</c> cannot be read is treated as REVOKED, not
+    /// as exempt. The opposite reading would let a token opt out of revocation
+    /// by omitting a claim, which is the wrong way for this to fail.</para>
+    ///
+    /// <para><b>The comparison includes the boundary second.</b> <c>nbf</c> has
+    /// one-second resolution, so a strict <c>&lt;</c> lets any token minted in
+    /// the same second as the revocation survive — for its whole fifteen
+    /// minutes, not for a second. That is not theoretical: disabling an account
+    /// immediately after its owner signed in does exactly that, and the first
+    /// version of this shipped with it.</para>
+    ///
+    /// <para>The cost of <c>&lt;=</c> is a user who signs in again inside the
+    /// same second as their own "sign out everywhere" getting one dead token
+    /// and having to repeat it. Against a revoked session staying live for a
+    /// quarter of an hour, that is not a close call.</para>
+    /// </remarks>
+    public static bool IsRevoked(DateTimeOffset? cutoff, string? notBefore)
+    {
+        if (cutoff is null) return false;
+
+        return !long.TryParse(
+                   notBefore, NumberStyles.Integer, CultureInfo.InvariantCulture, out var at)
+               || DateTimeOffset.FromUnixTimeSeconds(at) <= cutoff.Value;
     }
 }

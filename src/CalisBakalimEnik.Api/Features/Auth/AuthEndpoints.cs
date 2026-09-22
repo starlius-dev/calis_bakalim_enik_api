@@ -363,6 +363,7 @@ public static class AuthEndpoints
     private static async Task<IResult> LogoutAllAsync(
         AuthService auth,
         ITokenService tokens,
+        IClock clock,
         ClaimsPrincipal principal,
         CancellationToken ct)
     {
@@ -371,6 +372,13 @@ public static class AuthEndpoints
 
         await auth.RevokeAllForUserAsync(userId.Value, RefreshRevokedReason.Logout, ct);
         await DenylistCurrentAccessTokenAsync(tokens, principal, ct);
+
+        // The denylist only reaches the token in this request. Every OTHER
+        // device is holding an access token whose jti nothing recorded, and
+        // "sign out everywhere" that leaves those working for fifteen minutes
+        // is not what the button says — least of all when it is pressed
+        // because someone believes their account is compromised.
+        await tokens.RevokeIssuedBeforeAsync(userId.Value, clock.UtcNow, ct);
 
         return Results.NoContent();
     }

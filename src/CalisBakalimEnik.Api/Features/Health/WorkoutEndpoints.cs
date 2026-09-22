@@ -17,8 +17,15 @@ public sealed record ExerciseResponse(
 public sealed record PlanItemRequest(
     Guid ExerciseId, short TargetSets, short? TargetReps, short? TargetSeconds);
 
+/// <param name="DaysOfWeek">
+/// Nullable because the deserialiser makes it so. A non-nullable array on a
+/// request record is a promise the compiler believes and System.Text.Json does
+/// not keep: the property is simply left null when the field is absent from the
+/// body, and the annotation turns every use into an unguarded one that reads as
+/// safe.
+/// </param>
 public sealed record WorkoutPlanRequest(
-    string Name, short[] DaysOfWeek, IReadOnlyList<PlanItemRequest>? Items);
+    string Name, short[]? DaysOfWeek, IReadOnlyList<PlanItemRequest>? Items);
 
 public sealed record PlanItemResponse(
     Guid Id, Guid ExerciseId, string ExerciseName, short Position,
@@ -222,13 +229,20 @@ public static class WorkoutEndpoints
         if (string.IsNullOrWhiteSpace(request.Name))
             return Invalid("name", "Plan adı boş olamaz.");
 
-        if (request.DaysOfWeek.Any(d => d is < 1 or > 7))
+        // Null-guarded, like Items below. A client that simply omits an
+        // optional field was getting a 500 out of ArgumentNullException, which
+        // is the wrong answer to "you left something out" — and it is a write
+        // endpoint, so the caller cannot tell a rejected request from a broken
+        // server.
+        var days = request.DaysOfWeek ?? [];
+
+        if (days.Any(d => d is < 1 or > 7))
             return Invalid("daysOfWeek", "Günler 1 ile 7 arasında olmalı.");
 
         var plan = new WorkoutPlan
         {
             Name = request.Name.Trim(),
-            DaysOfWeek = request.DaysOfWeek,
+            DaysOfWeek = days,
         };
 
         db.WorkoutPlans.Add(plan);

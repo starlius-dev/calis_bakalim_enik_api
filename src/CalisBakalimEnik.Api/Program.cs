@@ -90,6 +90,11 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+
+// Before CORS and everything else, so the headers are on a preflight and on a
+// failure too — the responses most likely to be the ones an attacker sees.
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
 app.UseCors(corsPolicy);
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -106,6 +111,18 @@ else if (app.Services.GetRequiredService<IEmailSender>() is LoggingEmailSender)
     // service that nobody can finish signing up to.
     throw new InvalidOperationException(
         "Email:Provider must be Resend with an Email:ApiKey outside Development.");
+}
+
+if (!app.Environment.IsDevelopment()
+    && string.IsNullOrWhiteSpace(builder.Configuration["DataProtection:KeyPath"]))
+{
+    // Same reasoning, worse symptom. Without a persisted key ring the TOTP
+    // secrets in the database cannot be decrypted after a redeploy, and the
+    // service looks perfectly healthy while refusing every correct
+    // authenticator code. Refusing to start is the kinder failure.
+    throw new InvalidOperationException(
+        "DataProtection:KeyPath must point at durable storage outside Development. "
+        + "Without it every enrolled authenticator app breaks on the next deploy.");
 }
 
 // Order is load-bearing: the denylist and current-user resolution both read a
