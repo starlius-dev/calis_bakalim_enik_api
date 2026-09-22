@@ -59,6 +59,12 @@ public static class DependencyInjection
         services.AddScoped<MedicationDoseService>();
         services.AddHostedService<MedicationDoseGenerator>();
 
+        // Phase 7 — the only tables whose size depends on time rather than on
+        // what the user typed. See docs/DATABASE.md §6.
+        services.Configure<RetentionOptions>(
+            configuration.GetSection(RetentionOptions.SectionName));
+        services.AddHostedService<RetentionCleanup>();
+
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);
 
