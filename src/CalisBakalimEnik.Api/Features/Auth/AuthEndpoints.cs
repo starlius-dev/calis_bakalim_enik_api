@@ -36,6 +36,11 @@ public sealed record MeResponse(
     IReadOnlyCollection<string> Roles,
     IReadOnlyCollection<string> Permissions);
 
+public sealed record UpdateMeRequest(
+    string? DisplayName,
+    string? Locale,
+    string? TimeZone);
+
 public static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
@@ -49,6 +54,7 @@ public static class AuthEndpoints
         group.MapPost("/logout", LogoutAsync).RequireAuthorization();
         group.MapPost("/logout-all", LogoutAllAsync).RequireAuthorization();
         group.MapGet("/me", MeAsync).RequireAuthorization();
+        group.MapPatch("/me", UpdateMeAsync).RequireAuthorization();
 
         return app;
     }
@@ -367,6 +373,99 @@ public static class AuthEndpoints
 
         var user = await users.FindByIdAsync(userId.Value.ToString());
         if (user is null) return Results.Unauthorized();
+
+        var roles = await users.GetRolesAsync(user);
+
+        return Results.Ok(new MeResponse(
+            user.Id,
+            user.Email ?? string.Empty,
+            user.DisplayName,
+            user.Locale,
+            user.TimeZone,
+            roles.ToArray(),
+            currentUser.Permissions));
+    }
+
+    /// <summary>
+    /// Profil — the fields a user owns about themselves.
+    /// </summary>
+    /// <remarks>
+    /// The time zone matters more than it looks. Every "today" in the app is
+    /// computed from it server-side — the day a meal is filed under, the dose
+    /// horizon, which bar a focus session lands on — so until this existed a
+    /// user who travelled or whose account guessed wrong had no way to correct
+    /// it. See <see cref="Infrastructure.Identity.UserDate"/>.
+    ///
+    /// Email is NOT here: changing it is a security operation that needs
+    /// confirmation on both addresses, and it belongs with the other
+    /// re-authenticated actions rather than in a profile form.
+    /// </remarks>
+    private static async Task<IResult> UpdateMeAsync(
+        UpdateMeRequest request,
+        UserManager<AppUser> users,
+        ICurrentUser currentUser,
+        ClaimsPrincipal principal,
+        CancellationToken ct)
+    {
+        var userId = UserId(principal);
+        if (userId is null) return Results.Unauthorized();
+
+        var user = await users.FindByIdAsync(userId.Value.ToString());
+        if (user is null) return Results.Unauthorized();
+
+        if (request.DisplayName is { } name)
+        {
+            var trimmed = name.Trim();
+
+            if (trimmed.Length is < 2 or > 100)
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["displayName"] = ["Ad 2 ile 100 karakter arasında olmalı."],
+                });
+            }
+
+            user.DisplayName = trimmed;
+        }
+
+        if (request.Locale is { } locale)
+        {
+            if (locale is not ("tr" or "en"))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["locale"] = ["Desteklenen diller: tr, en."],
+                });
+            }
+
+            user.Locale = locale;
+        }
+
+        if (request.TimeZone is { } zone)
+        {
+            // Validated against the real database, not a regex: an unknown id
+            // would be silently resolved to the app default on every read, and
+            // the user would see their day quietly computed in someone else's
+            // zone with nothing to explain it.
+            if (!TimeZoneInfo.TryFindSystemTimeZoneById(zone, out _))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["timeZone"] = ["Geçerli bir saat dilimi seç."],
+                });
+            }
+
+            user.TimeZone = zone;
+        }
+
+        var result = await users.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["profile"] = [string.Join(" ", result.Errors.Select(e => e.Description))],
+            });
+        }
 
         var roles = await users.GetRolesAsync(user);
 
