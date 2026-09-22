@@ -354,12 +354,32 @@ public static class NutritionEndpoints
         return Results.NoContent();
     }
 
+    /// <summary>
+    /// The weight history, newest first.
+    /// </summary>
+    /// <param name="before">
+    /// The <c>onDate</c> of the last row of the previous page. Without it this
+    /// endpoint could return at most 365 rows and a user's second year of
+    /// weigh-ins was unreachable by any request.
+    ///
+    /// A date is enough of a cursor here, and only here: (owner_id, on_date) is
+    /// unique, so no two rows share a sort key and there is no tie for the
+    /// cursor to fall inside. See the remarks on the workout-session feed for
+    /// what that costs when it is not true.
+    /// </param>
     private static async Task<IResult> ListMeasurementsAsync(
-        AppDbContext db, ClaimsPrincipal principal, CancellationToken ct, int take = 90)
+        AppDbContext db,
+        ClaimsPrincipal principal,
+        CancellationToken ct,
+        int take = 90,
+        DateOnly? before = null)
     {
         if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
 
-        var rows = await db.BodyMeasurements
+        var query = db.BodyMeasurements.AsQueryable();
+        if (before is not null) query = query.Where(m => m.OnDate < before);
+
+        var rows = await query
             .OrderByDescending(m => m.OnDate)
             .Take(Math.Clamp(take, 1, 365))
             .Select(m => new MeasurementResponse(m.Id, m.OnDate, m.WeightKg))

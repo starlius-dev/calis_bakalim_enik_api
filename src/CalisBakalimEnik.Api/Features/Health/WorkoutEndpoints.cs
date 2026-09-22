@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Health;
@@ -184,12 +185,15 @@ public static class WorkoutEndpoints
     {
         if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
 
-        var plans = await db.WorkoutPlans.OrderBy(p => p.Name).ToListAsync(ct);
+        var plans = await db.WorkoutPlans.OrderBy(p => p.Name)
+            .Take(ListLimits.Ceiling)
+            .ToListAsync(ct);
         var ids = plans.Select(p => p.Id).ToList();
 
         var items = await db.WorkoutPlanItems
             .Where(i => ids.Contains(i.PlanId))
             .OrderBy(i => i.Position)
+            .Take(ListLimits.Ceiling)
             .Join(
                 db.Exercises,
                 i => i.ExerciseId,
@@ -291,12 +295,42 @@ public static class WorkoutEndpoints
 
     // ── sessions ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Training sessions, newest first.
+    /// </summary>
+    /// <param name="before">
+    /// The <c>startedAt</c> of the last row of the previous page, echoed back
+    /// as the API sent it. The ceiling here was 100, which a person training
+    /// twice a week passes in under a year.
+    /// </param>
+    /// <remarks>
+    /// The cursor compares against the same coalesced expression the ordering
+    /// uses, because a keyset cursor that does not match its ORDER BY is not a
+    /// cursor. That has one consequence worth stating: sessions with no start
+    /// time all share the sort key <c>MinValue</c> and sit together at the end
+    /// of the feed, and a cursor cannot split a tie. If a user ever
+    /// accumulated more than a page of unstarted sessions, the tail of that
+    /// block would be unreachable — which is acceptable only because a session
+    /// without a start time is an anomaly rather than a row anyone collects.
+    /// </remarks>
     private static async Task<IResult> ListSessionsAsync(
-        AppDbContext db, ClaimsPrincipal principal, CancellationToken ct, int take = 30)
+        AppDbContext db,
+        ClaimsPrincipal principal,
+        CancellationToken ct,
+        int take = 30,
+        DateTimeOffset? before = null)
     {
         if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
 
-        var sessions = await db.WorkoutSessions
+        var query = db.WorkoutSessions.AsQueryable();
+
+        if (before is not null)
+        {
+            query = query.Where(
+                s => (s.StartedAt ?? DateTimeOffset.MinValue) < before);
+        }
+
+        var sessions = await query
             .OrderByDescending(s => s.StartedAt ?? DateTimeOffset.MinValue)
             .Take(Math.Clamp(take, 1, 100))
             .ToListAsync(ct);

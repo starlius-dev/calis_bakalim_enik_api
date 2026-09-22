@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Health;
@@ -96,7 +97,9 @@ public static class MedicationEndpoints
         var query = db.Medications.AsQueryable();
         if (!includePaused) query = query.Where(m => m.PausedAt == null);
 
-        var medications = await query.OrderBy(m => m.Name).ToListAsync(ct);
+        var medications = await query.OrderBy(m => m.Name)
+            .Take(ListLimits.Ceiling)
+            .ToListAsync(ct);
         return Results.Ok(await DescribeManyAsync(db, medications, clock, ct));
     }
 

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Identity;
@@ -113,6 +114,7 @@ public static class DeviceEndpoints
         var devices = await db.Devices
             .Where(d => d.UserId == userId)
             .OrderByDescending(d => d.LastSeenAt)
+            .Take(ListLimits.Ceiling)
             .ToListAsync(ct);
 
         return Results.Ok(devices.Select(Describe));

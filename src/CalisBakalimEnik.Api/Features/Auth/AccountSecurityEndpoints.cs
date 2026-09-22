@@ -218,6 +218,7 @@ public static class AccountSecurityEndpoints
         var sessions = await db.RefreshTokens
             .Where(t => t.UserId == userId && t.RevokedAt == null && t.ExpiresAt > now)
             .OrderByDescending(t => t.IssuedAt)
+            .Take(ListLimits.Ceiling)
             .Select(t => new SessionResponse(
                 t.Id, null, t.UserAgent, t.CreatedIp, t.IssuedAt, t.ExpiresAt,
                 currentFamily != null && t.FamilyId == currentFamily))

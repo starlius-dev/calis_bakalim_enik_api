@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Plan;
@@ -91,7 +92,9 @@ public static class PlanEndpoints
     {
         if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
 
-        var terms = await db.Terms.OrderByDescending(t => t.StartsOn).ToListAsync(ct);
+        var terms = await db.Terms.OrderByDescending(t => t.StartsOn)
+            .Take(ListLimits.Ceiling)
+            .ToListAsync(ct);
 
         return Results.Ok(terms.Select(t =>
             new TermResponse(t.Id, t.Name, t.StartsOn, t.EndsOn, t.IsCurrent)));
@@ -195,6 +198,7 @@ public static class PlanEndpoints
 
         var entries = await db.ScheduleEntries
             .OrderBy(e => e.DayOfWeek).ThenBy(e => e.StartsAt)
+            .Take(ListLimits.Ceiling)
             .ToListAsync(ct);
 
         return Results.Ok(entries.Select(Describe));
@@ -294,15 +298,37 @@ public static class PlanEndpoints
 
     // ── focus sessions ───────────────────────────────────────────────────
 
+    /// <summary>
+    /// Study sessions, newest first.
+    /// </summary>
+    /// <param name="before">
+    /// The <c>startedAt</c> of the last row of the previous page. Without it
+    /// this endpoint stopped at 200 rows, which a daily user passes inside a
+    /// year — and everything older than that was unreachable by any request,
+    /// not merely inconvenient to reach.
+    ///
+    /// Send back the string the API returned rather than a re-formatted one.
+    /// It is a microsecond timestamp, and a client that parses it into its own
+    /// date type may round it — Dart on the web truncates to milliseconds —
+    /// which moves the cursor PAST rows that were never shown.
+    /// </param>
     private static async Task<IResult> ListFocusAsync(
         AppDbContext db,
         ClaimsPrincipal principal,
         CancellationToken ct,
-        int take = 30)
+        int take = 30,
+        DateTimeOffset? before = null)
     {
         if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
 
-        var sessions = await db.FocusSessions
+        var query = db.FocusSessions.AsQueryable();
+
+        // No tie-break on the id. Two focus sessions would have to start in the
+        // same microsecond for one to be needed, and a person runs one study
+        // timer at a time.
+        if (before is not null) query = query.Where(s => s.StartedAt < before);
+
+        var sessions = await query
             .OrderByDescending(s => s.StartedAt)
             .Take(Math.Clamp(take, 1, 200))
             .ToListAsync(ct);

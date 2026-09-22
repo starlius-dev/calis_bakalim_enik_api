@@ -261,6 +261,7 @@ public static partial class ContentEndpoints
             .OrderBy(p => p.Status == ProjectStatus.Done)
             .ThenBy(p => p.DueOn == null)
             .ThenBy(p => p.DueOn)
+            .Take(ListLimits.Ceiling)
             .ToListAsync(ct);
 
         return Results.Ok(projects.Select(Describe));
