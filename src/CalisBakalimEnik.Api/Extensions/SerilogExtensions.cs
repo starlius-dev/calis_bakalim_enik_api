@@ -20,6 +20,19 @@ public static class SerilogExtensions
                 restrictedToMinimumLevel: LogEventLevel.Information));
     }
 
+    /// <summary>
+    /// How long a request may take before it is logged as a WARNING rather than
+    /// as information.
+    /// </summary>
+    /// <remarks>
+    /// Every request is already logged with its duration, which is useless for
+    /// finding a slow one: the slow request looks exactly like the other ten
+    /// thousand. Raising the level is what makes it findable — and what lets an
+    /// alert exist at all, since alerting on "an Information line whose Elapsed
+    /// property is large" is not something a log search does well.
+    /// </remarks>
+    private const int SlowRequestMs = 500;
+
     /// <summary>Request logging that carries the user and correlation id.</summary>
     public static IApplicationBuilder UseRequestLogging(this IApplicationBuilder app)
     {
@@ -27,6 +40,25 @@ public static class SerilogExtensions
         {
             options.MessageTemplate =
                 "{RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+
+            // A slow-request warning belongs here rather than in an endpoint
+            // filter: this measures what the USER waited for, including
+            // authentication, the denylist lookup and serialisation, and it
+            // covers every route without a convention anyone has to remember.
+            //
+            // The first request after a deploy trips this — JIT and the EF
+            // model build land on whoever arrives first. One warning per start
+            // is the price; special-casing it would mean ignoring the one
+            // request most likely to be genuinely slow.
+            options.GetLevel = (http, elapsed, error) =>
+            {
+                if (error is not null || http.Response.StatusCode >= 500)
+                    return LogEventLevel.Error;
+
+                return elapsed > SlowRequestMs
+                    ? LogEventLevel.Warning
+                    : LogEventLevel.Information;
+            };
 
             options.EnrichDiagnosticContext = (diagnostic, http) =>
             {

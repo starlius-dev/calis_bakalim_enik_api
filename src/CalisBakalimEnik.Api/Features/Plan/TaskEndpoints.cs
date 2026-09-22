@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Plan;
@@ -67,7 +68,10 @@ public static class TaskEndpoints
             .RequireAuthorization();
 
         group.MapGet("/", ListAsync);
-        group.MapPost("/", CreateAsync);
+        // Saves twice: the task, then its reminder, which needs the id the
+        // first save generated. Without the transaction a failure between
+        // them leaves a task whose reminder will never fire.
+        group.MapPost("/", CreateAsync).Transactional();
         group.MapGet("/{id:guid}", GetAsync);
         group.MapPatch("/{id:guid}", UpdateAsync);
         group.MapPost("/{id:guid}/complete", CompleteAsync);

@@ -1,7 +1,8 @@
 using System.Text.Json;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Application.Common.Exceptions;
-using CalisBakalimEnik.Api.Middleware;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CalisBakalimEnik.Api.Middleware;
 
@@ -14,8 +15,6 @@ public sealed class ExceptionHandlingMiddleware(
     ILogger<ExceptionHandlingMiddleware> logger,
     IHostEnvironment environment)
 {
-    private const string BaseType = "https://calisbakalimenik.app/errors/";
-
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -35,19 +34,24 @@ public sealed class ExceptionHandlingMiddleware(
         var (status, title, type, detail) = exception switch
         {
             AppValidationException => (StatusCodes.Status400BadRequest, "Validation failed",
-                "validation", "One or more fields are invalid."),
+                ProblemTypes.Validation, "One or more fields are invalid."),
             UnauthorizedException e => (StatusCodes.Status401Unauthorized, "Unauthorized",
-                "unauthorized", e.Message),
+                ProblemTypes.Unauthorized, e.Message),
             ForbiddenException e => (StatusCodes.Status403Forbidden, "Forbidden",
-                "forbidden", e.Message),
+                ProblemTypes.Forbidden, e.Message),
             NotFoundException e => (StatusCodes.Status404NotFound, "Not found",
-                "not-found", e.Message),
+                ProblemTypes.NotFound, e.Message),
             ConflictException e => (StatusCodes.Status409Conflict, "Conflict",
-                "conflict", e.Message),
+                ProblemTypes.Conflict, e.Message),
+            // EF's optimistic concurrency failure IS a conflict. Left to the
+            // fallback it became a 500, which tells the client to give up on
+            // something a retry would have fixed.
+            DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Conflict",
+                ProblemTypes.Conflict, "The resource changed while you were editing it."),
             OperationCanceledException => (StatusCodes.Status499ClientClosedRequest,
-                "Client closed request", "cancelled", "The request was cancelled."),
+                "Client closed request", ProblemTypes.Cancelled, "The request was cancelled."),
             _ => (StatusCodes.Status500InternalServerError, "Unexpected error",
-                "internal", "An unexpected error occurred.")
+                ProblemTypes.Internal, "An unexpected error occurred.")
         };
 
         if (status >= 500)
@@ -73,7 +77,7 @@ public sealed class ExceptionHandlingMiddleware(
         {
             Status = status,
             Title = title,
-            Type = BaseType + type,
+            Type = type,
             Detail = detail,
             Instance = context.Request.Path
         };

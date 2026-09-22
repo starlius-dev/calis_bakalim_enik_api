@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Identity;
@@ -71,8 +72,12 @@ public static class AdminEndpoints
         users.MapGet("/{id:guid}", GetUserAsync)
             .RequireAuthorization(Permissions.UsersRead);
 
+        // Saves twice: the status, then the security event. An account
+        // disabled with nothing in the audit trail saying who did it is the
+        // worst of the partial writes in this codebase.
         users.MapPost("/{id:guid}/disable", DisableAsync)
-            .RequireAuthorization(Permissions.UsersDisable);
+            .RequireAuthorization(Permissions.UsersDisable)
+            .Transactional();
 
         users.MapPost("/{id:guid}/enable", EnableAsync)
             .RequireAuthorization(Permissions.UsersDisable);

@@ -5,7 +5,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+    <!--
+      For the AddApplication() hook only. This arrived transitively through
+      FluentValidation, so removing that package took IServiceCollection with
+      it — the layer had a dependency it never declared. Abstractions only: no
+      container, no hosting, nothing that would let Infrastructure leak inward.
+    -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
   </ItemGroup>
 
   <PropertyGroup>

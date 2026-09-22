@@ -109,8 +109,8 @@ else if (app.Services.GetRequiredService<IEmailSender>() is LoggingEmailSender)
 }
 
 // Order is load-bearing: the denylist and current-user resolution both read a
-// VALIDATED claim, so they must sit after authentication. Rate limiting joins in
-// Phase 4. See docs/ARCHITECTURE.md §2.
+// VALIDATED claim, so they must sit after authentication. See
+// docs/ARCHITECTURE.md §2.
 app.UseAuthentication();
 app.UseMiddleware<JwtDenylistMiddleware>();
 
@@ -120,20 +120,26 @@ app.UseMiddleware<AuthenticatedRateLimitMiddleware>();
 
 app.UseAuthorization();
 
-app.MapSystemEndpoints();
-app.MapAuthEndpoints();
-app.MapMfaEndpoints();
-app.MapAccountSecurityEndpoints();
-app.MapNotificationEndpoints();
-app.MapDeviceEndpoints();
-app.MapTaskEndpoints();
-app.MapPlanEndpoints();
-app.MapContentEndpoints();
-app.MapMedicationEndpoints();
-app.MapWorkoutEndpoints();
-app.MapNutritionEndpoints();
-app.MapStatsEndpoints();
-app.MapAdminEndpoints();
+// Everything is mapped through one group so the problem-details filter cannot
+// be forgotten on a new feature. The prefix is empty — the endpoint files carry
+// their own absolute paths — so this changes no route, only what every route
+// runs. See docs/ARCHITECTURE.md §3.
+var api = app.MapGroup("").CompleteProblemDetails();
+
+api.MapSystemEndpoints();
+api.MapAuthEndpoints();
+api.MapMfaEndpoints();
+api.MapAccountSecurityEndpoints();
+api.MapNotificationEndpoints();
+api.MapDeviceEndpoints();
+api.MapTaskEndpoints();
+api.MapPlanEndpoints();
+api.MapContentEndpoints();
+api.MapMedicationEndpoints();
+api.MapWorkoutEndpoints();
+api.MapNutritionEndpoints();
+api.MapStatsEndpoints();
+api.MapAdminEndpoints();
 
 // Seed the global roles and their permission claims. Idempotent, and outside any
 // migration so tightening a role in code actually tightens it in the database.

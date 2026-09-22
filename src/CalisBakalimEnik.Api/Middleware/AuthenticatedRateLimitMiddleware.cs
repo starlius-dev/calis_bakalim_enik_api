@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Infrastructure.Identity;
+using Microsoft.AspNetCore.Mvc;
 
 namespace CalisBakalimEnik.Api.Middleware;
 
@@ -60,12 +62,22 @@ public sealed class AuthenticatedRateLimitMiddleware(RequestDelegate next)
         http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         http.Response.ContentType = "application/problem+json";
 
-        await http.Response.WriteAsJsonAsync(new
+        // A ProblemDetails rather than a hand-rolled object: this runs as
+        // middleware, outside the endpoint filter that completes the documents
+        // endpoints return, so it has to carry the correlation id itself. A 429
+        // with nothing to quote is the one a user reports most often.
+        var problem = new ProblemDetails
         {
-            type = "https://tools.ietf.org/html/rfc9110#section-15.5.29",
-            title = "Çok fazla istek",
-            status = StatusCodes.Status429TooManyRequests,
-            detail = "Çok hızlı denedin. Biraz bekleyip tekrar dene.",
-        }, http.RequestAborted);
+            Type = ProblemTypes.RateLimited,
+            Title = "Çok fazla istek",
+            Status = StatusCodes.Status429TooManyRequests,
+            Detail = "Çok hızlı denedin. Biraz bekleyip tekrar dene.",
+            Instance = http.Request.Path,
+        };
+
+        problem.Extensions["correlationId"] =
+            http.Items[CorrelationIdMiddleware.HeaderName] as string;
+
+        await http.Response.WriteAsJsonAsync(problem, http.RequestAborted);
     }
 }

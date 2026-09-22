@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.RegularExpressions;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Content;
@@ -85,7 +86,8 @@ public static partial class ContentEndpoints
 
         var events = app.MapGroup("/api/v1/events").WithTags("Content").RequireAuthorization();
         events.MapGet("/", ListEventsAsync);
-        events.MapPost("/", CreateEventAsync);
+        // Saves twice — the event, then its reminder. See TaskEndpoints.
+        events.MapPost("/", CreateEventAsync).Transactional();
         events.MapPatch("/{id:guid}", UpdateEventAsync);
         events.MapDelete("/{id:guid}", DeleteEventAsync);
 
