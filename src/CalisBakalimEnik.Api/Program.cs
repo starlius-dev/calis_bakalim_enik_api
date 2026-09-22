@@ -112,6 +112,11 @@ else if (app.Services.GetRequiredService<IEmailSender>() is LoggingEmailSender)
 // Phase 4. See docs/ARCHITECTURE.md §2.
 app.UseAuthentication();
 app.UseMiddleware<JwtDenylistMiddleware>();
+
+// After authentication so the budget is partitioned by the real user, and
+// before authorization so a flood of forbidden requests is still metered.
+app.UseMiddleware<AuthenticatedRateLimitMiddleware>();
+
 app.UseAuthorization();
 
 app.MapSystemEndpoints();

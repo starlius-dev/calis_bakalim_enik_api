@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddSingleton<TotpService>();
         services.AddSingleton<MfaChallengeStore>();
         services.AddSingleton<BruteForceGuard>();
+        services.AddSingleton<RateLimitGuard>();
         services.AddScoped<MfaService>();
         services.AddScoped<SecurityEventWriter>();
 

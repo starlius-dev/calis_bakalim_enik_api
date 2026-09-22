@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Infrastructure.Identity;
@@ -32,7 +33,9 @@ public static class AccountSecurityEndpoints
     public static IEndpointRouteBuilder MapAccountSecurityEndpoints(this IEndpointRouteBuilder app)
     {
         var anon = app.MapGroup("/api/v1/auth/password").WithTags("Account");
-        anon.MapPost("/forgot", ForgotAsync).AllowAnonymous();
+        anon.MapPost("/forgot", ForgotAsync)
+            .AllowAnonymous()
+            .RateLimit(RateLimitGuard.Policies.ForgotPassword);
         anon.MapPost("/reset", ResetAsync).AllowAnonymous();
 
         var auth = app.MapGroup("/api/v1/auth").WithTags("Account").RequireAuthorization();

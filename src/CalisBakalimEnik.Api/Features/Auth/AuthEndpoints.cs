@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using CalisBakalimEnik.Api.Middleware;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Infrastructure.Identity;
@@ -47,10 +48,22 @@ public static class AuthEndpoints
     {
         var group = app.MapGroup("/api/v1/auth").WithTags("Auth");
 
-        group.MapPost("/register", RegisterAsync).AllowAnonymous();
+        // The budgets are declared next to the routes on purpose: a new
+        // endpoint cannot silently inherit, or miss, someone else's limit.
+        // See docs/SECURITY.md §5, layer 3.
+        group.MapPost("/register", RegisterAsync)
+            .AllowAnonymous()
+            .RateLimit(RateLimitGuard.Policies.Register);
+
         group.MapPost("/confirm-email", ConfirmEmailAsync).AllowAnonymous();
-        group.MapPost("/login", LoginAsync).AllowAnonymous();
-        group.MapPost("/refresh", RefreshAsync).AllowAnonymous();
+
+        group.MapPost("/login", LoginAsync)
+            .AllowAnonymous()
+            .RateLimit(RateLimitGuard.Policies.Login);
+
+        group.MapPost("/refresh", RefreshAsync)
+            .AllowAnonymous()
+            .RateLimit(RateLimitGuard.Policies.Refresh);
         group.MapPost("/logout", LogoutAsync).RequireAuthorization();
         group.MapPost("/logout-all", LogoutAllAsync).RequireAuthorization();
         group.MapGet("/me", MeAsync).RequireAuthorization();
