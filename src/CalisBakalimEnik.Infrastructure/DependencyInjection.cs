@@ -65,6 +65,14 @@ public static class DependencyInjection
             configuration.GetSection(RetentionOptions.SectionName));
         services.AddHostedService<RetentionCleanup>();
 
+        // security_events is range-partitioned by month. A month with no
+        // partition is not a housekeeping problem — a row is written on every
+        // login, so it is a service nobody can sign in to. This keeps the
+        // window rolling ahead of the data.
+        services.Configure<PartitionOptions>(
+            configuration.GetSection(PartitionOptions.SectionName));
+        services.AddHostedService<PartitionMaintenance>();
+
         services.AddHealthChecks()
             .AddDbContextCheck<AppDbContext>("postgres", tags: ["ready"]);
 

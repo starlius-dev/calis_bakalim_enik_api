@@ -172,7 +172,22 @@ public sealed class RetentionCleanup(
             // missing setting must be "kept", not "deleted".
             if (rule.Days <= 0) continue;
 
-            var deleted = await PruneAsync(db, rule, now.AddDays(-rule.Days), ct);
+            var cutoff = now.AddDays(-rule.Days);
+
+            // A partitioned table gives up a whole month at a time. Dropping a
+            // partition unlinks a file; deleting its rows marks each one dead,
+            // writes a WAL record per row, and leaves the space occupied until
+            // VACUUM catches up. At the scale this table reaches with real
+            // users that is the difference between a moment and an hour.
+            if (PartitionOptions.Partitioned.Contains(rule.Table))
+                await DropAgedPartitionsAsync(db, rule.Table, cutoff, ct);
+
+            // Still swept afterwards, and not as a belt-and-braces gesture:
+            // the drop only takes months that have aged out ENTIRELY, so the
+            // boundary month and anything sitting in the default partition are
+            // left, and those are exactly the rows a partition drop cannot
+            // reach.
+            var deleted = await PruneAsync(db, rule, cutoff, ct);
             total += deleted;
 
             if (deleted > 0)
@@ -221,5 +236,35 @@ public sealed class RetentionCleanup(
         }
 
         return total;
+    }
+
+    /// <summary>
+    /// Hands the aged months to the database, which is the only thing
+    /// allowed to drop them.
+    /// </summary>
+    /// <remarks>
+    /// <c>DROP TABLE</c> is DDL, and the application's role cannot issue
+    /// DDL — deliberately. <c>drop_aged_partitions</c> is a SECURITY
+    /// DEFINER function installed by the migration, allowlisted to one
+    /// table, which works out for itself which partitions have aged out.
+    /// Both arguments are parameters.
+    ///
+    /// It only takes months that have ended entirely, and it never touches
+    /// the DEFAULT partition, whose rows belong to no particular month.
+    /// Those are left to the batched delete that runs next.
+    /// </remarks>
+    private async Task DropAgedPartitionsAsync(
+        AppDbContext db, string table, DateTimeOffset cutoff, CancellationToken ct)
+    {
+        var dropped = await db.Database
+            .SqlQueryRaw<int>(
+                """SELECT drop_aged_partitions({0}, {1}) AS "Value" """,
+                table, cutoff)
+            .SingleAsync(ct);
+
+        if (dropped > 0)
+            logger.LogInformation(
+                "Retention: dropped {Count} aged partitions of {Table}.",
+                dropped, table);
     }
 }
