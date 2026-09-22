@@ -42,9 +42,6 @@ public static class MfaEndpoints
         auth.MapPost("/email/enrol", (EnrolOtpRequest r, HttpContext h, UserManager<AppUser> u,
                 MfaService m, SecurityEventWriter e, CancellationToken ct)
             => EnrolOtpAsync(r, MfaFactorType.EmailOtp, h, u, m, e, ct));
-        auth.MapPost("/sms/enrol", (EnrolOtpRequest r, HttpContext h, UserManager<AppUser> u,
-                MfaService m, SecurityEventWriter e, CancellationToken ct)
-            => EnrolOtpAsync(r, MfaFactorType.SmsOtp, h, u, m, e, ct));
         auth.MapPost("/otp/confirm", ConfirmOtpAsync);
         auth.MapPost("/recovery-codes", RegenerateRecoveryCodesAsync);
         auth.MapDelete("/factors/{factorId:guid}", RemoveFactorAsync);

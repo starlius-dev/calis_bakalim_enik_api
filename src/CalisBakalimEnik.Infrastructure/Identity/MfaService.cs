@@ -21,15 +21,28 @@ public sealed class MfaService(
     TotpService totp,
     MfaChallengeStore challenges,
     IEmailSender email,
-    ISmsSender sms,
     IClock clock)
 {
     private const string Issuer = "Calis Bakalim Enik";
 
+    /// <summary>
+    /// The factors a user may actually be challenged on.
+    /// </summary>
+    /// <remarks>
+    /// SMS rows written before the factor was removed are excluded here rather
+    /// than left to fail later. Nothing delivers an SMS code any more, so an
+    /// offered SMS factor would produce a challenge that can never be
+    /// satisfied — and if it were the primary one, that is a lockout.
+    /// </remarks>
     public async Task<IReadOnlyList<MfaFactor>> GetUsableFactorsAsync(
         Guid userId, CancellationToken ct) =>
         await db.MfaFactors
-            .Where(f => f.UserId == userId && f.DeletedAt == null && f.VerifiedAt != null)
+            .Where(f => f.UserId == userId
+                        && f.DeletedAt == null
+                        && f.VerifiedAt != null
+#pragma warning disable CS0618 // Reserved value, referenced here on purpose.
+                        && f.FactorType != MfaFactorType.SmsOtp)
+#pragma warning restore CS0618
             .OrderByDescending(f => f.IsPrimary)
             .ThenBy(f => f.FactorType)
             .ToListAsync(ct);
@@ -229,7 +242,7 @@ public sealed class MfaService(
     {
         string? code = null;
 
-        if (factor.FactorType is MfaFactorType.EmailOtp or MfaFactorType.SmsOtp)
+        if (factor.FactorType is MfaFactorType.EmailOtp)
         {
             code = MfaChallengeStore.GenerateNumericCode();
 
@@ -310,10 +323,11 @@ public sealed class MfaService(
         var body = $"Çalış Bakalım Enik doğrulama kodun: {code}\n" +
                    $"Kod {MfaChallengeStore.Lifetime.TotalMinutes:0} dakika geçerli.";
 
+        // Email is the only delivered factor. SMS was removed: it is the weakest
+        // second factor (SIM-swap prone), it costs money per send, and TOTP plus
+        // recovery codes already cover the same ground better.
         if (factor.FactorType == MfaFactorType.EmailOtp)
             await email.SendAsync(factor.Destination, "Doğrulama kodun", body, ct);
-        else
-            await sms.SendAsync(factor.Destination, body, ct);
     }
 
     private async Task SoftDeleteExistingAsync(

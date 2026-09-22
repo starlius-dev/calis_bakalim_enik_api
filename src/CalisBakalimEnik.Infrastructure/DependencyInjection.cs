@@ -41,7 +41,6 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<DatabaseSeeder>();
         AddEmail(services, configuration);
-        services.AddSingleton<ISmsSender, LoggingSmsSender>();
 
         // MFA (Phase 4)
         services.AddDataProtection();

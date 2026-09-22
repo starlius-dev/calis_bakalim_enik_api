@@ -6,7 +6,20 @@ public enum MfaFactorType : short
 {
     Totp = 1,
     EmailOtp = 2,
+
+    /// <summary>
+    /// Removed. SMS is the weakest second factor — SIM-swap prone — and costs
+    /// money per send, while TOTP and recovery codes cover the same ground
+    /// better. Nothing can enrol or verify one any more.
+    /// </summary>
+    /// <remarks>
+    /// The NUMBER stays reserved rather than being deleted. These values are
+    /// stored as smallint, so handing 3 to a future factor type would silently
+    /// reinterpret any row written before the removal.
+    /// </remarks>
+    [Obsolete("SMS OTP was removed. The value is reserved, not reusable.")]
     SmsOtp = 3,
+
     RecoveryCode = 4,
 }
 
@@ -41,7 +54,6 @@ public class MfaFactor : BaseEntity
     public string? MaskedDestination => FactorType switch
     {
         MfaFactorType.EmailOtp => MaskEmail(Destination),
-        MfaFactorType.SmsOtp => MaskPhone(Destination),
         _ => null,
     };
 
@@ -58,11 +70,5 @@ public class MfaFactor : BaseEntity
             : local[0] + new string('•', Math.Min(local.Length - 2, 5)) + local[^1];
 
         return masked + email[at..];
-    }
-
-    private static string? MaskPhone(string? phone)
-    {
-        if (string.IsNullOrWhiteSpace(phone) || phone.Length < 4) return "•••";
-        return string.Concat(new string('•', phone.Length - 4).AsSpan(), phone.AsSpan(phone.Length - 4));
     }
 }

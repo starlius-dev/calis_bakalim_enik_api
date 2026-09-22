@@ -17,7 +17,12 @@ public enum DeliveryChannel : short
 {
     Push = 1,
     Email = 2,
+
+    /// <summary>Removed with SMS OTP. Reserved, not reusable — see
+    /// <see cref="Identity.MfaFactorType.SmsOtp"/>.</summary>
+    [Obsolete("SMS delivery was removed. The value is reserved, not reusable.")]
     Sms = 3,
+
     InApp = 4,
 }
 
