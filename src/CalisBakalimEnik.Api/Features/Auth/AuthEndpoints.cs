@@ -191,12 +191,34 @@ public static class AuthEndpoints
         if (user is null)
             return Problem(AuthErrors.InvalidConfirmationToken, StatusCodes.Status400BadRequest, http);
 
+        // An address that is already confirmed makes this link SPENT. Identity
+        // derives the token from the security stamp and confirming does not
+        // rotate it, so without this the same link keeps working for its whole
+        // lifetime - and the unconditional promotion that used to sit below
+        // turned that into a way to undo an administrator's disable: confirm,
+        // get disabled, re-open the original signup mail, sign in again.
+        //
+        // It answers exactly as a bad token does, so the two stay
+        // indistinguishable to anyone probing.
+        if (user.EmailConfirmed)
+            return Problem(AuthErrors.InvalidConfirmationToken, StatusCodes.Status400BadRequest, http);
+
         var result = await users.ConfirmEmailAsync(user, request.Token);
         if (!result.Succeeded)
             return Problem(AuthErrors.InvalidConfirmationToken, StatusCodes.Status400BadRequest, http);
 
-        user.Status = UserStatus.Active;
+        // Confirmation promotes an account that was WAITING to be confirmed,
+        // and nothing else. A disabled account stays disabled: what an
+        // administrator decided outranks a link that arrived by email.
+        if (user.Status == UserStatus.PendingConfirmation)
+            user.Status = UserStatus.Active;
+
         await users.UpdateAsync(user);
+
+        // Belt and braces. Rotating the stamp kills this token
+        // cryptographically, so a replay cannot get through by way of some
+        // later edit that drops the EmailConfirmed check above.
+        await users.UpdateSecurityStampAsync(user);
 
         return Results.NoContent();
     }

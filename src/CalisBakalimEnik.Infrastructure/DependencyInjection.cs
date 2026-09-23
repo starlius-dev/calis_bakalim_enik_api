@@ -190,8 +190,27 @@ public static class DependencyInjection
         var connection = configuration["Redis:Configuration"];
         if (string.IsNullOrWhiteSpace(connection)) return;
 
-        services.AddSingleton<IConnectionMultiplexer>(
-            _ => ConnectionMultiplexer.Connect(connection));
+        services.AddSingleton<IConnectionMultiplexer>(_ =>
+        {
+            var options = ConfigurationOptions.Parse(connection);
+
+            // Do not refuse to start because the cache is down. The callers all
+            // degrade on their own; refusing to boot turns a cache outage into
+            // an application outage, which is the thing being avoided one layer
+            // up in JwtDenylistMiddleware.
+            options.AbortOnConnectFail = false;
+
+            // The defaults are five seconds each. Every authenticated request
+            // waits on this, so a blip was costing ~5.7s per request before it
+            // failed - long enough to exhaust the client's own timeouts and to
+            // queue requests behind it. A cache we cannot reach in a second is
+            // a cache we should stop waiting for.
+            options.ConnectTimeout = 1000;
+            options.SyncTimeout = 1000;
+            options.ConnectRetry = 3;
+
+            return ConnectionMultiplexer.Connect(options);
+        });
 
         services.AddSingleton<ICacheStore, RedisCacheStore>();
     }

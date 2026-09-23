@@ -48,6 +48,23 @@ public sealed class ExceptionHandlingMiddleware(
             // something a retry would have fixed.
             DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Conflict",
                 ProblemTypes.Conflict, "The resource changed while you were editing it."),
+            // A body that could not be read at all: absent, empty, truncated,
+            // not JSON, or the wrong shape entirely. The framework raises this
+            // while binding, BEFORE any handler runs, so no endpoint's own
+            // validation ever gets the chance to answer - and left to the
+            // fallback below it became a 500 on every write route, told the
+            // caller the server was broken when the request was, and logged
+            // each one as an unhandled error.
+            //
+            // The exception carries its own status for the cases that are not
+            // 400 (a body over the size limit is a 413), so that is honoured
+            // rather than flattened.
+            BadHttpRequestException bad => (
+                bad.StatusCode is >= 400 and < 500
+                    ? bad.StatusCode
+                    : StatusCodes.Status400BadRequest,
+                "Invalid request", ProblemTypes.Validation,
+                "İstek okunamadı. Gövdenin geçerli JSON olduğundan emin ol."),
             OperationCanceledException => (StatusCodes.Status499ClientClosedRequest,
                 "Client closed request", ProblemTypes.Cancelled, "The request was cancelled."),
             _ => (StatusCodes.Status500InternalServerError, "Unexpected error",

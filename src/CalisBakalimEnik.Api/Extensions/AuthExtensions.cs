@@ -100,19 +100,44 @@ internal sealed class ConfigureJwtBearer(
 /// </remarks>
 public sealed class JwtDenylistMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext context, ITokenService tokens)
+    public async Task InvokeAsync(
+        HttpContext context, ITokenService tokens, ILogger<JwtDenylistMiddleware> logger)
     {
         if (context.User.Identity?.IsAuthenticated == true)
         {
-            var raw = context.User.FindFirst("jti")?.Value;
+            bool revoked;
 
-            if (Guid.TryParse(raw, out var jti) && await tokens.IsDenylistedAsync(jti))
+            try
             {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                return;
+                revoked = await IsRevokedAsync(context, tokens);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // FAIL OPEN, deliberately - and this is the interesting line in
+                // the file.
+                //
+                // Both lookups live in Redis, which is a cache here and not a
+                // system of record. Letting a cache fault answer 500 turns a
+                // blip into a total outage of every authenticated route, and
+                // that is not hypothetical: one dropped connection did exactly
+                // that, answering 500 on every request after a five-second
+                // stall apiece.
+                //
+                // The cost of the other direction is bounded and small. During
+                // an outage a session revoked in the last few minutes keeps
+                // working until its access token expires, which is at most
+                // Jwt:AccessTokenMinutes. The refresh token lives in PostgreSQL
+                // and is still revoked, so nothing can be renewed past that
+                // window. RateLimitGuard makes the same call for the same
+                // reason.
+                logger.LogWarning(ex,
+                    "Revocation cache unreachable; allowing the request. Path={Path}",
+                    context.Request.Path);
+
+                revoked = false;
             }
 
-            if (await IsBeforeCutoffAsync(context, tokens))
+            if (revoked)
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
@@ -120,6 +145,19 @@ public sealed class JwtDenylistMiddleware(RequestDelegate next)
         }
 
         await next(context);
+    }
+
+    /// <summary>
+    /// The two revocation questions, asked together so one catch covers both.
+    /// </summary>
+    private static async Task<bool> IsRevokedAsync(HttpContext context, ITokenService tokens)
+    {
+        var raw = context.User.FindFirst("jti")?.Value;
+
+        if (Guid.TryParse(raw, out var jti) && await tokens.IsDenylistedAsync(jti))
+            return true;
+
+        return await IsBeforeCutoffAsync(context, tokens);
     }
 
     /// <summary>
