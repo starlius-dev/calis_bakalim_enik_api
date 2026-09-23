@@ -90,7 +90,14 @@ public static class MedicationEndpoints
         IClock clock,
         ClaimsPrincipal principal,
         CancellationToken ct,
-        bool includePaused = true)
+        // Defaults to the narrower list. A caller that does not know to ask was
+        // getting paused medications mixed in with live ones, which is the
+        // wrong way round for a default: the safe answer is the one that only
+        // contains things that are actually happening.
+        //
+        // The Flutter client asks for true on purpose — it shows paused rows
+        // inline, dimmed and badged, rather than hiding them behind a toggle.
+        bool includePaused = false)
     {
         if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
 
@@ -268,17 +275,48 @@ public static class MedicationEndpoints
         IClock clock,
         ClaimsPrincipal principal,
         CancellationToken ct,
-        DateTimeOffset? from = null,
-        DateTimeOffset? to = null,
+        DateOnly? from = null,
+        DateOnly? to = null,
         int take = 200)
     {
-        if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
+        var userId = MfaEndpoints.UserId(principal);
+        if (userId is null) return Results.Unauthorized();
 
-        var start = (from ?? clock.UtcNow.AddDays(-1)).ToUniversalTime();
-        var end = (to ?? clock.UtcNow.AddDays(1)).ToUniversalTime();
+        // DATES, resolved in the user's own zone — the same contract /agenda
+        // and /stats already use, and the reason this had to change.
+        //
+        // It took two instants and compared them directly, which was wrong in
+        // two ways at once. `?from=X&to=X` — the obvious way to ask for one
+        // day — spans midnight to midnight and returned NOTHING, so a single
+        // day's doses were unreachable by the obvious call. And the boundaries
+        // were UTC midnights, so a 01:00 dose in Istanbul fell into the
+        // previous UTC day and showed up on the wrong date.
+        //
+        // The client compensated by sending device-local midnight, which meant
+        // dose days followed the DEVICE while every other screen followed the
+        // profile. Setting a profile zone did not move them.
+        var zone = await UserDate.ZoneAsync(db, userId.Value, ct);
+        var today = UserDate.Today(clock.UtcNow, zone);
+
+        // The default window is deliberately wider than a day: a dose at 23:00
+        // ticked off after midnight has to still be on the screen it was ticked
+        // off from.
+        var first = from ?? today.AddDays(-1);
+        var last = to ?? today.AddDays(1);
+
+        if (last < first)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["to"] = ["Bitiş tarihi başlangıçtan önce olamaz."],
+            });
+
+        var start = UserDate.StartOfLocalDay(first, zone);
+        var end = UserDate.EndOfLocalDay(last, zone);
 
         var doses = await db.MedicationDoses
-            .Where(d => d.ScheduledAt >= start && d.ScheduledAt <= end)
+            // Half-open: EndOfLocalDay is the NEXT day's midnight, so `<` is
+            // what keeps a dose at exactly midnight out of both days at once.
+            .Where(d => d.ScheduledAt >= start && d.ScheduledAt < end)
             .OrderBy(d => d.ScheduledAt)
             .Take(Math.Clamp(take, 1, 500))
             .Join(

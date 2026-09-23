@@ -76,7 +76,9 @@ public static partial class ContentEndpoints
         courses.MapGet("/{id:guid}", GetCourseAsync);
         courses.MapPatch("/{id:guid}", UpdateCourseAsync);
         courses.MapPost("/{id:guid}/archive", ArchiveCourseAsync);
-        courses.MapDelete("/{id:guid}", DeleteCourseAsync);
+        // Transactional: the soft delete and the four unlinks are one decision,
+        // and a half-applied one leaves rows pointing at a course that is gone.
+        courses.MapDelete("/{id:guid}", DeleteCourseAsync).Transactional();
 
         var projects = app.MapGroup("/api/v1/projects").WithTags("Content").RequireAuthorization();
         projects.MapGet("/", ListProjectsAsync);
@@ -226,6 +228,30 @@ public static partial class ContentEndpoints
         if (course is null) return Results.NotFound();
 
         course.DeletedAt = clock.UtcNow;
+
+        // Everything that pointed at this course is UNLINKED, not deleted.
+        //
+        // Deleting a course is a decision about the course. A term's worth of
+        // notes and a half-finished project are not collateral, so they stay —
+        // but they cannot keep a CourseId that now resolves to a 404 either,
+        // which is what used to happen: the task still reported the id, the
+        // course was gone from every list, and the client had a chip it could
+        // not name.
+        //
+        // The ownership filter applies to each of these, so only this user's
+        // rows are touched.
+        await db.Tasks.Where(t => t.CourseId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.CourseId, (Guid?)null), ct);
+
+        await db.Projects.Where(p => p.CourseId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.CourseId, (Guid?)null), ct);
+
+        await db.Notes.Where(n => n.CourseId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.CourseId, (Guid?)null), ct);
+
+        await db.Events.Where(e => e.CourseId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.CourseId, (Guid?)null), ct);
+
         await db.SaveChangesAsync(ct);
 
         return Results.NoContent();
@@ -394,6 +420,8 @@ public static partial class ContentEndpoints
         if (!TryParse(request.EventType, out EventType type))
             return Missing("eventType", "Exam, Presentation, Meeting veya SchoolEvent olmalı.");
 
+        if (BackwardsEvent(request) is { } backwards) return backwards;
+
         if (request.CourseId is not null &&
             !await db.Courses.AnyAsync(c => c.Id == request.CourseId, ct))
         {
@@ -439,6 +467,8 @@ public static partial class ContentEndpoints
 
         if (!TryParse(request.EventType, out EventType type))
             return Missing("eventType", "Exam, Presentation, Meeting veya SchoolEvent olmalı.");
+
+        if (BackwardsEvent(request) is { } backwards) return backwards;
 
         if (!string.IsNullOrWhiteSpace(request.Title)) item.Title = request.Title.Trim();
         item.EventType = type;
@@ -622,6 +652,25 @@ public static partial class ContentEndpoints
 
         return Enum.TryParse(value, ignoreCase: true, out parsed) && Enum.IsDefined(parsed);
     }
+
+    /// <summary>
+    /// An end that does not come after its start, which is not a shorter event
+    /// but a nonsensical one.
+    /// </summary>
+    /// <remarks>
+    /// The timetable has enforced this since it was written; events never did,
+    /// and accepted an end a full YEAR before the start. Same rule and same
+    /// wording as <c>PlanEndpoints</c>, including the strict comparison: an
+    /// event that ends at the instant it begins has no duration, and every
+    /// screen that draws it as a block would draw nothing.
+    ///
+    /// An all-day event is checked too. <c>AllDay</c> changes how the times are
+    /// DISPLAYED; it does not make a backwards pair meaningful.
+    /// </remarks>
+    private static IResult? BackwardsEvent(EventRequest request) =>
+        request.EndsAt is { } ends && ends <= request.StartsAt
+            ? Missing("endsAt", "Bitiş saati başlangıçtan sonra olmalı.")
+            : null;
 
     private static IResult Missing(string field, string message) =>
         Results.ValidationProblem(new Dictionary<string, string[]>
