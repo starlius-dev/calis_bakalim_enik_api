@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 
 namespace CalisBakalimEnik.Api.Features.Auth;
 
-public sealed record RegisterRequest(string Email, string Password, string DisplayName);
+public sealed record RegisterRequest(string Email, string Password, string? DisplayName);
 public sealed record ConfirmEmailRequest(string UserId, string Token);
 public sealed record LoginRequest(string Email, string Password);
 public sealed record RefreshRequest(string RefreshToken);
@@ -108,11 +108,29 @@ public static class AuthEndpoints
             return Results.NoContent();
         }
 
+        // The same rule PATCH /auth/me enforces. Registration had none at all,
+        // so an empty string sailed through EF's [Required] — which rejects
+        // null and accepts "" — and produced accounts with no name and blank
+        // initials on the identity card.
+        //
+        // This is checked BEFORE the existing-address branch above would have
+        // mattered, and it reveals nothing: the rule is about the name in this
+        // request, not about who is registered.
+        var displayName = (request.DisplayName ?? string.Empty).Trim();
+
+        if (displayName.Length is < 2 or > 100)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["displayName"] = ["Ad 2 ile 100 karakter arasında olmalı."],
+            });
+        }
+
         var user = new AppUser
         {
             UserName = request.Email,
             Email = request.Email,
-            DisplayName = request.DisplayName,
+            DisplayName = displayName,
             Status = UserStatus.PendingConfirmation,
             CreatedAt = clock.UtcNow,
         };

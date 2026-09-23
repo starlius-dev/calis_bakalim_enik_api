@@ -179,6 +179,10 @@ public static class DependencyInjection
             })
             .AddRoles<AppRole>()
             .AddEntityFrameworkStores<AppDbContext>()
+            // Identity's own messages are English by default, and they are the
+            // ones on the signup and password screens — the rules this API does
+            // not write itself. See TurkishIdentityErrorDescriber.
+            .AddErrorDescriber<TurkishIdentityErrorDescriber>()
             .AddDefaultTokenProviders();
 
         // 210k iterations, raised from the 100k default. See docs/DATABASE.md §3.

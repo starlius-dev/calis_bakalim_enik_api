@@ -13,8 +13,31 @@ public sealed record MfaVerifyRequest(Guid ChallengeId, string Code);
 public sealed record MfaResendRequest(Guid ChallengeId);
 public sealed record MfaSelectRequest(Guid ChallengeId, Guid FactorId);
 public sealed record ConfirmCodeRequest(string Code);
-public sealed record EnrolOtpRequest(string Destination, string Password);
-public sealed record StepUpRequest(string Password);
+
+/// <param name="Password">
+/// Nullable because the deserialiser makes it so, whatever the annotation
+/// claims. A non-nullable string on a request record is a promise the compiler
+/// believes and System.Text.Json does not keep: the property is simply left
+/// null when the field is absent from the body, and every use downstream then
+/// reads as safe when it is not. This one reached
+/// <c>UserManager.CheckPasswordAsync</c> and came back as a 500.
+/// </param>
+public sealed record EnrolOtpRequest(string Destination, string? Password);
+
+/// <param name="Password">See <see cref="EnrolOtpRequest.Password"/>.</param>
+public sealed record StepUpRequest(string? Password);
+
+/// <summary>
+/// What a confirmed TOTP factor answers with.
+/// </summary>
+/// <param name="RecoveryCodes">
+/// The ten codes, present ONLY when this confirmation created them — which is
+/// the first time the account gets a second factor. Null afterwards, because
+/// re-enrolling an authenticator must not silently invalidate codes the user
+/// already wrote down.
+/// </param>
+public sealed record TotpConfirmedResponse(
+    IReadOnlyList<string>? RecoveryCodes, string? Warning);
 
 public sealed record FactorResponse(
     Guid Id,
@@ -219,9 +242,33 @@ public static class MfaEndpoints
             userId, ClientIp(http), UserAgent(http),
             new { factor = "Totp", stage = "confirm" }, ct);
 
-        return result.Succeeded
-            ? Results.NoContent()
-            : Problem(result.Error, StatusCodes.Status400BadRequest, http);
+        if (!result.Succeeded)
+            return Problem(result.Error, StatusCodes.Status400BadRequest, http);
+
+        // Recovery codes are issued HERE, with the factor, rather than being
+        // offered afterwards as a separate step behind a second password
+        // prompt.
+        //
+        // Offered, they get skipped — and an authenticator with no recovery
+        // codes is a permanent lockout waiting for a lost phone, with no
+        // operator path back by design. Acceptance testing locked two accounts
+        // out of this dev database that way inside an hour.
+        //
+        // Only when the account has none. Re-enrolling an authenticator must
+        // not quietly invalidate codes the user already wrote down, so an
+        // account that already has usable codes keeps them and gets nulls here.
+        var remaining = await mfa.CountRemainingCodesAsync(userId.Value, ct);
+
+        if (remaining > 0) return Results.Ok(new TotpConfirmedResponse(null, null));
+
+        var codes = await mfa.RegenerateRecoveryCodesAsync(userId.Value, ct);
+
+        await events.WriteAsync(SecurityEventType.MfaEnrolled, succeeded: true,
+            userId, ClientIp(http), UserAgent(http),
+            new { factor = "RecoveryCode", count = codes.Count, stage = "auto" }, ct);
+
+        return Results.Ok(new TotpConfirmedResponse(
+            codes, "Bu kodlar bir daha gösterilmeyecek."));
     }
 
     private static async Task<IResult> EnrolOtpAsync(
@@ -328,8 +375,15 @@ public static class MfaEndpoints
     // ── helpers ──────────────────────────────────────────────────────────
 
     private static async Task<AppUser?> RequireStepUpAsync(
-        string password, UserManager<AppUser> users, ClaimsPrincipal principal)
+        string? password, UserManager<AppUser> users, ClaimsPrincipal principal)
     {
+        // An absent password is a refusal, not a crash. CheckPasswordAsync
+        // throws ArgumentNullException on null, which surfaced as a 500 and told
+        // the caller the server was broken when they had simply left a field
+        // out. The answer here is the same 403 a WRONG password gets, so the
+        // two stay indistinguishable.
+        if (string.IsNullOrEmpty(password)) return null;
+
         var userId = UserId(principal);
         if (userId is null) return null;
 

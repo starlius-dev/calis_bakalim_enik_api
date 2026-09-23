@@ -55,6 +55,12 @@ public sealed class ProblemDetailsFilter : IEndpointFilter
 
         if (IsUnchosen(problem.Type)) problem.Type = ProblemTypes.ForStatus(status);
 
+        // Same rule as Type, for the same reason: "did anyone choose it".
+        // Results.ValidationProblem fills the title in with an English sentence
+        // from the framework, so the one line a user is most likely to see on a
+        // refused form was the one line not in their language.
+        if (IsUnchosenTitle(problem.Title)) problem.Title = "Geçersiz istek";
+
         problem.Instance ??= http.Request.Path;
 
         if (!problem.Extensions.ContainsKey("correlationId"))
@@ -83,6 +89,14 @@ public sealed class ProblemDetailsFilter : IEndpointFilter
     private static bool IsUnchosen(string? type) =>
         string.IsNullOrEmpty(type) ||
         type.StartsWith("https://tools.ietf.org/html/rfc", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether this <c>title</c> is the framework's, rather than one an
+    /// endpoint wrote. Anything else is a decision and is left alone.
+    /// </summary>
+    private static bool IsUnchosenTitle(string? title) =>
+        string.IsNullOrEmpty(title) ||
+        title == "One or more validation errors occurred.";
 }
 
 public static class ProblemDetailsFilterExtensions
