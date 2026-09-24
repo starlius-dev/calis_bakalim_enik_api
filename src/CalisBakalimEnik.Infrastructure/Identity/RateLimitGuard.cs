@@ -83,7 +83,12 @@ public sealed class RateLimitGuard(ICacheStore cache)
         if (string.IsNullOrWhiteSpace(partition))
             return new RateLimitVerdict(true, policy.Limit, 0, null);
 
-        var key = $"cbe:rl:{policy.Name}:{partition}";
+        // No "cbe:" here. ICacheStore adds the configured prefix to every key
+        // it is given, so writing one in produced cbe:cbe:rl:* — which worked,
+        // but meant the rate limiter was the one subsystem whose real key names
+        // did not match the ones documented in SECURITY.md, and the only one
+        // that would miss a prefix change.
+        var key = $"rl:{policy.Name}:{partition}";
 
         try
         {

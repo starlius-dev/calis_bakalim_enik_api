@@ -61,6 +61,11 @@ builder.Services.AddCors(options =>
     });
 });
 
+// The client version floor. Absent by default, which leaves the gate inert —
+// see ClientVersionMiddleware.
+builder.Services.Configure<ClientOptions>(
+    builder.Configuration.GetSection(ClientOptions.SectionName));
+
 // Traffic arrives through a Cloudflare Tunnel. Trust ONLY Cloudflare: an empty
 // KnownNetworks list means "trust everyone", which lets any caller spoof the client
 // IP and reset another user's rate-limit bucket. See docs/SECURITY.md §1.
@@ -97,6 +102,10 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 
 app.UseCors(corsPolicy);
 app.UseMiddleware<CorrelationIdMiddleware>();
+
+// Before authentication: a client that is too old should be told to update,
+// not told its token is bad. Inert until Client:MinimumVersion is set.
+app.UseMiddleware<ClientVersionMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseRequestLogging();
 

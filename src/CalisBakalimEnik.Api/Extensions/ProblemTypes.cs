@@ -25,6 +25,7 @@ public static class ProblemTypes
     public const string RateLimited = Base + "rate-limited";
     public const string Cancelled = Base + "cancelled";
     public const string Internal = Base + "internal";
+    public const string ClientTooOld = Base + "client-too-old";
 
     /// <summary>
     /// The type for a status code, for documents built from a status rather
