@@ -27,27 +27,39 @@ public sealed class ExceptionHandlingMiddleware(
         }
     }
 
+    /// <summary>
+    /// Whether the caller sent a request body at all, so a binding failure can
+    /// point at the right half of the request.
+    /// </summary>
+    private static bool HasBody(HttpContext context) =>
+        context.Request.ContentLength > 0
+        || context.Request.Headers.ContainsKey("Transfer-Encoding");
+
     private async Task WriteProblemAsync(HttpContext context, Exception exception)
     {
         var correlationId = context.Items[CorrelationIdMiddleware.HeaderName] as string;
 
         var (status, title, type, detail) = exception switch
         {
-            AppValidationException => (StatusCodes.Status400BadRequest, "Validation failed",
-                ProblemTypes.Validation, "One or more fields are invalid."),
-            UnauthorizedException e => (StatusCodes.Status401Unauthorized, "Unauthorized",
+            // Turkish, like every other message a user can end up reading.
+            // These come from the middleware rather than from an endpoint, so
+            // ProblemDetailsFilter never sees them and they stayed English long
+            // after the endpoint-returned ones were translated.
+            AppValidationException => (StatusCodes.Status400BadRequest, "Geçersiz istek",
+                ProblemTypes.Validation, "Bir ya da daha fazla alan geçersiz."),
+            UnauthorizedException e => (StatusCodes.Status401Unauthorized, "Yetkisiz",
                 ProblemTypes.Unauthorized, e.Message),
-            ForbiddenException e => (StatusCodes.Status403Forbidden, "Forbidden",
+            ForbiddenException e => (StatusCodes.Status403Forbidden, "İzin yok",
                 ProblemTypes.Forbidden, e.Message),
-            NotFoundException e => (StatusCodes.Status404NotFound, "Not found",
+            NotFoundException e => (StatusCodes.Status404NotFound, "Bulunamadı",
                 ProblemTypes.NotFound, e.Message),
-            ConflictException e => (StatusCodes.Status409Conflict, "Conflict",
+            ConflictException e => (StatusCodes.Status409Conflict, "Çakışma",
                 ProblemTypes.Conflict, e.Message),
             // EF's optimistic concurrency failure IS a conflict. Left to the
             // fallback it became a 500, which tells the client to give up on
             // something a retry would have fixed.
-            DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Conflict",
-                ProblemTypes.Conflict, "The resource changed while you were editing it."),
+            DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Çakışma",
+                ProblemTypes.Conflict, "Kayıt sen düzenlerken değişti. Tekrar dene."),
             // A body that could not be read at all: absent, empty, truncated,
             // not JSON, or the wrong shape entirely. The framework raises this
             // while binding, BEFORE any handler runs, so no endpoint's own
@@ -63,12 +75,19 @@ public sealed class ExceptionHandlingMiddleware(
                 bad.StatusCode is >= 400 and < 500
                     ? bad.StatusCode
                     : StatusCodes.Status400BadRequest,
-                "Invalid request", ProblemTypes.Validation,
-                "İstek okunamadı. Gövdenin geçerli JSON olduğundan emin ol."),
+                "Geçersiz istek", ProblemTypes.Validation,
+                // The same exception covers an unreadable BODY and an
+                // unbindable QUERY value, and telling someone to check their
+                // JSON when they sent a GET with no body at all sends them
+                // looking in the wrong place. A cursor with an unencoded "+" in
+                // it does exactly that.
+                HasBody(context)
+                    ? "İstek gövdesi okunamadı. Geçerli JSON gönder."
+                    : "İstek okunamadı. Adresteki değerleri kontrol et."),
             OperationCanceledException => (StatusCodes.Status499ClientClosedRequest,
-                "Client closed request", ProblemTypes.Cancelled, "The request was cancelled."),
-            _ => (StatusCodes.Status500InternalServerError, "Unexpected error",
-                ProblemTypes.Internal, "An unexpected error occurred.")
+                "İstek iptal edildi", ProblemTypes.Cancelled, "İstek iptal edildi."),
+            _ => (StatusCodes.Status500InternalServerError, "Beklenmeyen hata",
+                ProblemTypes.Internal, "Beklenmeyen bir hata oluştu.")
         };
 
         if (status >= 500)

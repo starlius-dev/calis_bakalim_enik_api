@@ -124,8 +124,20 @@ public static class AdminEndpoints
                 u.DisplayName.ToLower().Contains(term));
         }
 
-        if (status is not null && Enum.TryParse<UserStatus>(status, true, out var wanted))
+        // An unparseable status used to be dropped, so ?status=Sacma answered
+        // 200 with the UNFILTERED list. The caller believes they filtered and
+        // the screen says otherwise; a typo becomes a wrong answer rather than
+        // an error. Same rule as every other enum this API accepts.
+        if (status is not null)
+        {
+            if (!Enum.TryParse<UserStatus>(status, true, out var wanted))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["status"] = ["Active, PendingConfirmation veya Disabled olmalı."],
+                });
+
             query = query.Where(u => u.Status == wanted);
+        }
 
         if (before is not null) query = query.Where(u => u.CreatedAt < before);
 
@@ -361,8 +373,18 @@ public static class AdminEndpoints
         if (succeeded is not null) query = query.Where(e => e.Succeeded == succeeded);
         if (before is not null) query = query.Where(e => e.Id < before);
 
-        if (type is not null && Enum.TryParse<SecurityEventType>(type, true, out var wanted))
+        // Same trap, and worse here: silently returning every event to an
+        // operator who asked for one kind is a wrong answer in an audit log.
+        if (type is not null)
+        {
+            if (!Enum.TryParse<SecurityEventType>(type, true, out var wanted))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["type"] = ["Bilinmeyen olay türü."],
+                });
+
             query = query.Where(e => e.EventType == wanted);
+        }
 
         var page = await query
             .OrderByDescending(e => e.Id)

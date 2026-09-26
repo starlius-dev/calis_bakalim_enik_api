@@ -44,10 +44,62 @@ public sealed class ProblemDetailsFilter : IEndpointFilter
             _ => null,
         };
 
-        if (problem is not null) Complete(problem, context.HttpContext);
+        if (problem is not null)
+        {
+            Complete(problem, context.HttpContext);
+            return result;
+        }
+
+        // A failure with NO BODY AT ALL — Results.NotFound(), .Unauthorized(),
+        // .Forbid() and friends, of which there are around forty across the
+        // feature folders.
+        //
+        // They were going out as a bare status line: no type, no title, no
+        // correlationId, nothing for a client to show or a user to quote. The
+        // SAME failure raised as a NotFoundException came back as a full
+        // problem document, so the API answered "this does not exist" in two
+        // different shapes depending on which line of code noticed. An unknown
+        // id is the most common failure a client will ever see, and it was the
+        // one carrying the least.
+        //
+        // Results with a value are left alone: Results.NotFound(someObject) is
+        // an endpoint deliberately saying something.
+        if (result is IStatusCodeHttpResult { StatusCode: >= 400 } bare
+            && result is not IValueHttpResult { Value: not null })
+        {
+            return Bodyless(bare.StatusCode.Value, context.HttpContext);
+        }
 
         return result;
     }
+
+    /// <summary>Turns a bare failure status into this API's problem document.</summary>
+    private static IResult Bodyless(int status, HttpContext http)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = status,
+            Title = TitleFor(status),
+            Type = ProblemTypes.ForStatus(status),
+            Instance = http.Request.Path,
+        };
+
+        problem.Extensions["correlationId"] =
+            http.Items[CorrelationIdMiddleware.HeaderName] as string;
+
+        return Results.Problem(problem);
+    }
+
+    private static string TitleFor(int status) => status switch
+    {
+        StatusCodes.Status400BadRequest => "Geçersiz istek",
+        StatusCodes.Status401Unauthorized => "Yetkisiz",
+        StatusCodes.Status403Forbidden => "İzin yok",
+        StatusCodes.Status404NotFound => "Bulunamadı",
+        StatusCodes.Status409Conflict => "Çakışma",
+        StatusCodes.Status429TooManyRequests => "Çok fazla istek",
+        _ => "İstek reddedildi",
+    };
 
     private static void Complete(ProblemDetails problem, HttpContext http)
     {

@@ -55,6 +55,7 @@ public static class NotificationEndpoints
         group.MapGet("/unread-count", UnreadCountAsync);
         group.MapPost("/{id:guid}/read", MarkReadAsync);
         group.MapPost("/read-all", MarkAllReadAsync);
+        group.MapDelete("/{id:guid}", DeleteAsync);
 
         var preferences = app.MapGroup("/api/v1/notification-preferences")
             .WithTags("Notifications")
@@ -145,6 +146,44 @@ public static class NotificationEndpoints
             .CountAsync(n => n.UserId == userId && n.ReadAt == null, ct);
 
         return Results.Ok(new { count });
+    }
+
+    /// <summary>
+    /// Removes one notification from the inbox.
+    /// </summary>
+    /// <remarks>
+    /// <para>The client has had a <c>Dismissible</c> on every inbox row since it
+    /// was written, calling <c>DELETE /notifications/{id}</c>. Nothing answered
+    /// it: the row vanished optimistically, the request 404'd, and the
+    /// notification came back on the next refresh. An acceptance test found it;
+    /// no unit test could have, because both halves were individually
+    /// reasonable.</para>
+    ///
+    /// <para><b>A hard delete, deliberately.</b> An inbox row is not an audit
+    /// record — <c>security_events</c> is, and it is a different table with its
+    /// own retention. The retention sweep already hard-deletes read
+    /// notifications and relies on the cascade into
+    /// <c>notification_deliveries</c>, so doing anything else here would leave
+    /// two different meanings of "deleted" in one table. It also avoids a
+    /// migration to add a column whose only reader would be a query filter.</para>
+    /// </remarks>
+    private static async Task<IResult> DeleteAsync(
+        Guid id,
+        AppDbContext db,
+        ClaimsPrincipal principal,
+        CancellationToken ct)
+    {
+        var userId = MfaEndpoints.UserId(principal);
+        if (userId is null) return Results.Unauthorized();
+
+        // Scoped by UserId for the same reason MarkReadAsync is: otherwise any
+        // authenticated caller could delete someone else's row by guessing an
+        // id. 404 rather than 403 — it is not theirs to learn the existence of.
+        var removed = await db.Notifications
+            .Where(n => n.Id == id && n.UserId == userId)
+            .ExecuteDeleteAsync(ct);
+
+        return removed == 0 ? Results.NotFound() : Results.NoContent();
     }
 
     private static async Task<IResult> MarkReadAsync(

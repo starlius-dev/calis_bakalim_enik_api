@@ -55,18 +55,35 @@ public sealed class MedicationDoseService(
         if (times.Count == 0) return 0;
 
         var now = clock.UtcNow;
-        var horizonEnd = now.AddDays(HorizonDays);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+
+        // The "already generated" window has to cover exactly what the loop
+        // below can produce, and it is expressed in the user's LOCAL DAYS for
+        // the same reason the loop is.
+        //
+        // It used to be `now .. now.AddDays(HorizonDays)` — a flat 14x24h from
+        // the current instant — while the loop runs to the END of the 14th
+        // local day. Everything in that gap was generated but invisible to the
+        // dedupe check, so the next pass inserted it again and PostgreSQL
+        // refused on uq_dose(medication_id, scheduled_at).
+        //
+        // That is not a stray warning. Every medication's doses go into one
+        // SaveChanges, so a single duplicate aborted the whole sweep: no doses
+        // created for anybody, and MarkMissedAsync never reached. A live
+        // restart found it at 21:00 Istanbul on day fourteen — three hours past
+        // the old window.
+        var windowStart = ToInstant(today.AddDays(-1), TimeOnly.MinValue, zone);
+        var windowEnd = ToInstant(today.AddDays(HorizonDays + 1), TimeOnly.MinValue, zone);
 
         var existing = await db.MedicationDoses
             .IgnoreQueryFilters()
             .Where(d => d.MedicationId == medication.Id
-                        && d.ScheduledAt >= now.AddDays(-1)
-                        && d.ScheduledAt <= horizonEnd)
+                        && d.ScheduledAt >= windowStart
+                        && d.ScheduledAt < windowEnd)
             .Select(d => d.ScheduledAt)
             .ToListAsync(ct);
 
         var seen = existing.ToHashSet();
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
         var created = 0;
 
         for (var offset = 0; offset <= HorizonDays; offset++)

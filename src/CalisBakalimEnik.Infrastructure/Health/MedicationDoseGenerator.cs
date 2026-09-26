@@ -65,15 +65,40 @@ public sealed class MedicationDoseGenerator(
 
         var created = 0;
 
+        // Saved PER MEDICATION rather than once at the end.
+        //
+        // One SaveChanges for the whole sweep means one failing row denies
+        // every user their doses — which is exactly what a duplicate-key bug
+        // did: the sweep threw, nothing was written, and MarkMissedAsync below
+        // never ran either. A background job that touches every account should
+        // degrade to "one account did not get its doses", not to "nobody did".
         foreach (var medication in medications)
         {
-            var zone = await doses.ZoneOfAsync(medication.OwnerId, ct);
-            created += await doses.GenerateAsync(medication, zone, ct);
+            try
+            {
+                var zone = await doses.ZoneOfAsync(medication.OwnerId, ct);
+                var added = await doses.GenerateAsync(medication, zone, ct);
+
+                if (added == 0) continue;
+
+                await db.SaveChangesAsync(ct);
+                created += added;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Drop the poisoned entries so the next medication starts from
+                // a clean tracker; without this one failure cascades into every
+                // save that follows it.
+                db.ChangeTracker.Clear();
+
+                logger.LogError(ex,
+                    "Dose generation failed for one medication. MedicationId={MedicationId}",
+                    medication.Id);
+            }
         }
 
         if (created > 0)
         {
-            await db.SaveChangesAsync(ct);
             logger.LogInformation("Extended the dose horizon by {Count} doses", created);
         }
 
