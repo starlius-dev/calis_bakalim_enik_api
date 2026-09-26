@@ -7,8 +7,28 @@ already defines prod (`3010`) and qa (`3011`) with matching databases, roles, un
 and nginx sites, all read off the live box. Inventing a third environment for the test
 team would mean a third set of everything and a convention nobody has used yet.
 
+## Just run the script
+
+```
+sudo bash /var/www/calis_bakalim_enik_api/deploy/install-slot.sh qa
+```
+
+`install-slot.sh` does the whole slot — database, roles, directories, both nginx
+sites, the shared map, the headers snippet, the systemd unit and its drop-in, and an
+env file with the database password already filled in. It is idempotent, it checks
+`nginx -t` before reloading so a mistake cannot take the other sites down, and it
+**deliberately does not start the API**: the binaries are not there yet and the Resend
+key is blank, so starting would only crash-loop.
+
+`prod` is the same script with `prod` instead of `qa` — different hostnames, port 3010,
+Redis db 1.
+
+The individual files below are the same content, kept for reading and for anyone who
+would rather install by hand.
+
 | File | Goes to |
 |---|---|
+| `install-slot.sh` | run it; already uploaded to `deploy/` on the box |
 | `qa_calis_bakalim_enik.service` | `/etc/systemd/system/` |
 | `qa_calis_bakalim_enik_web.nginx` | `/etc/nginx/sites-available/qa_calis_bakalim_enik_web` |
 | `calis_bakalim_enik_api.env.example` | `/var/www/calis_bakalim_enik_api/qa/calis_bakalim_enik_api.env`, filled in, `0600` |
