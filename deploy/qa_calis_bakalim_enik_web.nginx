@@ -1,0 +1,78 @@
+# /etc/nginx/sites-available/qa_calis_bakalim_enik_web
+#
+# The Flutter web bundle for the QA slot. Port 80 only — TLS terminates at
+# Cloudflare, which is also why there is no redirect to https here: cloudflared
+# reaches this over loopback and a redirect would loop.
+#
+#   ln -s /etc/nginx/sites-available/qa_calis_bakalim_enik_web \
+#         /etc/nginx/sites-enabled/
+#   nginx -t && systemctl reload nginx
+
+server {
+    # Port 80 with server_name routing, matching the other sites on this box
+    # (§0). TLS terminates at Cloudflare and cloudflared reaches nginx locally,
+    # so there is no listener on 443 and no redirect to it.
+    listen 80;
+    server_name test.calisbakalimenik.app;
+
+    root /var/www/calis_bakalim_enik_qa;
+    index index.html;
+
+    # The API is a separate hostname (api-qa.calisbakalimenik.app -> 127.0.0.1:3011,
+    # routed by cloudflared), so there is no /api proxy here. Keeping them on
+    # separate origins is what makes the CORS allow-list meaningful rather than
+    # decorative.
+
+    # Flutter web uses HASH routing (/#/bugun), so every real path is served by
+    # index.html and no rewrite rules are needed for deep links. This is worth
+    # stating because the usual SPA try_files dance is what people reach for and
+    # it is not required here.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Hashed build output: immutable for a year.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /canvaskit/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # NOT cached. A stale index.html or bootstrap pins every visitor to the
+    # previous build's asset hashes, and the deploy appears not to have happened.
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location = /flutter_bootstrap.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    location = /version.json {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
+    # There is deliberately NO firebase-messaging-sw.js rule. DEPLOYMENT.md §5
+    # required one; Firebase is not in pubspec.yaml on purpose, the file does not
+    # exist, and web push is a phase-2 concern. Serving a 404 with a cache header
+    # helps nobody.
+
+    # The bundle's own CSP. The API sends its own, much stricter one for JSON;
+    # this is the page's, and CanvasKit needs wasm-unsafe-eval.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api-qa.calisbakalimenik.app; frame-ancestors 'none'; base-uri 'self'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Cloudflare compresses at the edge, but the tunnel hop is local and cheap to
+    # compress anyway.
+    gzip on;
+    gzip_types text/css application/javascript application/json application/wasm image/svg+xml;
+    gzip_min_length 1024;
+
+    access_log /var/log/nginx/qa_calis_bakalim_enik_web.access.log;
+    error_log  /var/log/nginx/qa_calis_bakalim_enik_web.error.log;
+}

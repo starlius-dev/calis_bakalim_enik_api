@@ -1,0 +1,64 @@
+# /etc/systemd/system/qa_calis_bakalim_enik.service
+#
+# The QA slot, which is what the internal test release runs in. Prod is the same
+# file with qa -> prod and 3011 -> 3010 throughout.
+#
+# Naming, paths, port and hardening all follow docs/DEPLOYMENT.md §0, which was
+# read off the live box rather than invented. Do not loosen the hardening block;
+# the neighbouring services on this machine all carry it.
+
+[Unit]
+Description=Calis Bakalim Enik API (QA)
+After=network.target postgresql.service redis-server.service
+Wants=postgresql.service redis-server.service
+
+[Service]
+# Kestrel does not send sd_notify, so Type=notify would hold the unit in
+# "activating" until the timeout and then kill a perfectly healthy service.
+Type=simple
+User=servrinuse
+Group=servrinuse
+WorkingDirectory=/var/www/calis_bakalim_enik_api/qa
+ExecStart=/usr/bin/dotnet /var/www/calis_bakalim_enik_api/qa/CalisBakalimEnik.Api.dll
+Restart=always
+RestartSec=5
+
+# Every secret lives here, 0600, outside the deploy directory and never in git.
+# See deploy/calis_bakalim_enik_api.env.example for the full list; the API
+# refuses to start without Email and DataProtection.
+EnvironmentFile=/var/www/calis_bakalim_enik_api/qa/calis_bakalim_enik_api.env
+
+# 3011 is the QA port from §0. Loopback only — nothing but cloudflared and nginx
+# reaches this service, which is also why the forwarded-header trust list can
+# include loopback.
+Environment=ASPNETCORE_URLS=http://127.0.0.1:3011
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PrintTelemetryMessage=false
+
+# ASPNETCORE_ENVIRONMENT is Production even in the QA slot, deliberately: it is
+# what turns on the Cloudflare trust list and the startup guards that refuse a
+# logging-only mailer and an unpersisted key ring. A "Staging" environment here
+# would quietly run the test team on a configuration production never sees.
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# The only writable paths. `files/` holds the Data Protection key ring, which is
+# the second factor for every enrolled authenticator — if it is lost or not
+# persisted, every TOTP secret in the database becomes undecryptable. Back it up
+# with the database, not separately.
+ReadWritePaths=/var/www/calis_bakalim_enik_api/files
+ReadWritePaths=/var/www/calis_bakalim_enik_api/files/logs
+
+[Install]
+WantedBy=multi-user.target
