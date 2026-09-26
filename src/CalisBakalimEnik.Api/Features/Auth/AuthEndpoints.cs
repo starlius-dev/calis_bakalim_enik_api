@@ -255,6 +255,7 @@ public static class AuthEndpoints
         MfaService mfa,
         BruteForceGuard guard,
         SecurityEventWriter events,
+        IOptions<MfaOptions> mfaOptions,
         IClock clock,
         HttpContext http,
         CancellationToken ct)
@@ -321,9 +322,18 @@ public static class AuthEndpoints
             return Problem(AuthErrors.Disabled, StatusCodes.Status403Forbidden, http);
 
         // ── second factor ────────────────────────────────────────────────
-        var factors = await mfa.GetUsableFactorsAsync(user.Id, ct);
+        // Off for this deployment: no challenge, whatever the account has
+        // enrolled. The factor rows stay in the database — skipped rather than
+        // deleted — so turning the flag back on restores the authenticator
+        // somebody already set up instead of locking them out of it.
+        //
+        // MfaEndpoints is 404 while this is off, so an account cannot enrol a
+        // factor that would then never be asked for. See MfaOptions.
+        var factors = mfaOptions.Value.Enabled
+            ? await mfa.GetUsableFactorsAsync(user.Id, ct)
+            : [];
 
-        if (factors.Count > 0 || user.MfaRequired)
+        if (mfaOptions.Value.Enabled && (factors.Count > 0 || user.MfaRequired))
         {
             if (factors.Count == 0)
                 return Problem(MfaErrors.NotEnrolled, StatusCodes.Status403Forbidden, http);

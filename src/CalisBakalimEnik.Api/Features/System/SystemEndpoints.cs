@@ -9,7 +9,9 @@ public static class SystemEndpoints
     public static IEndpointRouteBuilder MapSystemEndpoints(this IEndpointRouteBuilder app)
     {
         // Version — the first question about any bug report is "which build".
-        app.MapGet("/api/version", (IHostEnvironment env) =>
+        app.MapGet("/api/version", (
+            IHostEnvironment env,
+            Microsoft.Extensions.Options.IOptions<Auth.MfaOptions> mfa) =>
         {
             var assembly = Assembly.GetExecutingAssembly();
             var informational = assembly
@@ -28,6 +30,11 @@ public static class SystemEndpoints
                 gitSha = parts.Length > 1 ? parts[1] : "local",
                 apiVersions = new[] { "v1" },
                 environment = env.EnvironmentName,
+                // Reported so a client built with the wrong MFA flag is a
+                // visible disagreement rather than a mystery: a UI that hides
+                // the second factor while the server still demands one leaves
+                // the user staring at a login that will not finish.
+                mfaEnabled = mfa.Value.Enabled,
                 builtAt = File.GetLastWriteTimeUtc(assembly.Location)
             });
         })

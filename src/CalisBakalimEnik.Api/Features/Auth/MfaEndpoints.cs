@@ -54,12 +54,17 @@ public static class MfaEndpoints
 {
     public static IEndpointRouteBuilder MapMfaEndpoints(this IEndpointRouteBuilder app)
     {
-        var anon = app.MapGroup("/api/v1/auth/mfa").WithTags("MFA");
+        // Both groups carry the filter: with the feature off, login never
+        // issues a challenge, so /verify and /select are unreachable anyway and
+        // leaving them answering would only invite a half-used surface.
+        var anon = app.MapGroup("/api/v1/auth/mfa").WithTags("MFA")
+            .AddEndpointFilter<MfaEnabledFilter>();
         anon.MapPost("/verify", VerifyAsync).AllowAnonymous();
         anon.MapPost("/resend", ResendAsync).AllowAnonymous();
         anon.MapPost("/select", SelectFactorAsync).AllowAnonymous();
 
-        var auth = app.MapGroup("/api/v1/auth/mfa").WithTags("MFA").RequireAuthorization();
+        var auth = app.MapGroup("/api/v1/auth/mfa").WithTags("MFA").RequireAuthorization()
+            .AddEndpointFilter<MfaEnabledFilter>();
         auth.MapGet("/factors", ListFactorsAsync);
         auth.MapPost("/totp/enrol", EnrolTotpAsync);
         auth.MapPost("/totp/confirm", ConfirmTotpAsync);

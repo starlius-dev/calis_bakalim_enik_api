@@ -67,6 +67,10 @@ builder.Services.AddCors(options =>
 builder.Services.Configure<ClientOptions>(
     builder.Configuration.GetSection(ClientOptions.SectionName));
 
+// Whether the second factor exists at all here. Defaults to ON — see MfaOptions.
+builder.Services.Configure<MfaOptions>(
+    builder.Configuration.GetSection(MfaOptions.SectionName));
+
 // Traffic arrives through a Cloudflare Tunnel. Trust ONLY Cloudflare: an empty
 // KnownNetworks list means "trust everyone", which lets any caller spoof the client
 // IP and reset another user's rate-limit bucket. See docs/SECURITY.md §1.
