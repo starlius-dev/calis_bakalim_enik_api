@@ -26,6 +26,12 @@ Four things are decisions rather than commands, and three of them are not mine t
 2. **Resend domain verification** for `calisbakalimenik.app`. Until it is done the API
    will not start at all: it refuses the logging-only mailer outside Development, on
    purpose, because a deployment where nobody can complete signup otherwise looks healthy.
+
+   Two settings ride along with it and are easy to miss. `Email__AppBaseUrl` decides
+   where the links in the mail point and defaults to **production** — leave it unset on
+   the QA slot and every tester gets a confirmation link to a site that does not exist
+   yet. `Email__From` is what the recipient sees; its domain must be the verified one,
+   though the part before the `@` is free and needs no real mailbox.
 3. **The database and its two roles.** `calis_bakalim_enik_qa`, owned by
    `calis_bakalim_enik_qa_migrations`, with `calis_bakalim_enik_qa_app` holding `USAGE`
    and no schema rights. `DEPLOYMENT.md` §3 has the shape; the neighbours' own
