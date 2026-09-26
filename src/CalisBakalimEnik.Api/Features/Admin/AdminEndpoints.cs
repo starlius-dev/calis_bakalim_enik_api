@@ -433,9 +433,5 @@ public static class AdminEndpoints
             ["roles"] = [string.Join(" ", result.Errors.Select(e => e.Description))],
         });
 
-    private static string? ClientIp(HttpContext http) =>
-        http.Request.Headers.TryGetValue("CF-Connecting-IP", out var cf)
-        && !string.IsNullOrWhiteSpace(cf)
-            ? cf.ToString()
-            : http.Connection.RemoteIpAddress?.ToString();
+    private static string? ClientIp(HttpContext http) => ClientAddress.Of(http);
 }

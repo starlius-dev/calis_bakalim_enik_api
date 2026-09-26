@@ -57,15 +57,12 @@ public sealed class RateLimitFilter(RateLimitGuard guard, RateLimitPolicy policy
     }
 
     /// <summary>
-    /// The REAL client. Behind Cloudflare every request carries the proxy's
-    /// address, so limiting on that would put every user in one bucket and the
-    /// first busy minute would lock out the world. See docs/SECURITY.md §1.
+    /// The REAL client, as vetted by UseForwardedHeaders — not whatever the
+    /// caller put in a header. A limiter partitioned on a spoofable value is
+    /// not a limiter: one header per request buys an unlimited budget. See
+    /// <see cref="ClientAddress"/> and docs/SECURITY.md §1.
     /// </summary>
-    private static string? ClientIp(HttpContext http) =>
-        http.Request.Headers.TryGetValue("CF-Connecting-IP", out var cf)
-        && !string.IsNullOrWhiteSpace(cf)
-            ? cf.ToString()
-            : http.Connection.RemoteIpAddress?.ToString();
+    private static string? ClientIp(HttpContext http) => ClientAddress.Of(http);
 }
 
 public static class RateLimitExtensions

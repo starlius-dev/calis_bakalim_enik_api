@@ -74,11 +74,9 @@ public static class SerilogExtensions
     }
 
     /// <summary>
-    /// Traffic arrives through a Cloudflare Tunnel, so the socket address is the same for
-    /// every user. The real client is in CF-Connecting-IP. See docs/SECURITY.md §1.
+    /// The vetted client address. Reading the header here as well would put an
+    /// attacker-chosen string in the logs, which is worse than useless in the
+    /// one place an incident is reconstructed from. See docs/SECURITY.md §1.
     /// </summary>
-    private static string ClientIp(HttpContext http) =>
-        http.Request.Headers.TryGetValue("CF-Connecting-IP", out var cf) && !string.IsNullOrWhiteSpace(cf)
-            ? cf.ToString()
-            : http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    private static string ClientIp(HttpContext http) => ClientAddress.OrUnknown(http);
 }

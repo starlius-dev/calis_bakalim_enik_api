@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Middleware;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Application.Common.Models;
@@ -398,11 +399,12 @@ public static class MfaEndpoints
 
     internal static string AccountKey(string email) => email.ToUpperInvariant();
 
-    internal static string? ClientIp(HttpContext http)
-        => http.Request.Headers.TryGetValue("CF-Connecting-IP", out var cf)
-           && !string.IsNullOrWhiteSpace(cf)
-            ? cf.ToString()
-            : http.Connection.RemoteIpAddress?.ToString();
+    /// <summary>
+    /// The vetted client address — this one also partitions the brute-force
+    /// guard, so a spoofable value here means the lockout can be stepped around
+    /// by changing a header. See <see cref="ClientAddress"/>.
+    /// </summary>
+    internal static string? ClientIp(HttpContext http) => ClientAddress.Of(http);
 
     internal static string UserAgent(HttpContext http)
         => http.Request.Headers.UserAgent.ToString();

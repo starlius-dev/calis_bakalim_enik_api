@@ -576,14 +576,9 @@ public static class AuthEndpoints
         DeviceId: null);
 
     /// <summary>
-    /// Traffic arrives through a Cloudflare Tunnel, so the socket address is the
-    /// same for every user. See docs/SECURITY.md §1.
+    /// The vetted client address. See <see cref="ClientAddress"/>.
     /// </summary>
-    private static string? ClientIp(HttpContext http)
-        => http.Request.Headers.TryGetValue("CF-Connecting-IP", out var cf)
-           && !string.IsNullOrWhiteSpace(cf)
-            ? cf.ToString()
-            : http.Connection.RemoteIpAddress?.ToString();
+    private static string? ClientIp(HttpContext http) => ClientAddress.Of(http);
 
     private static TokenResponse ToResponse(TokenPair pair) => new(
         pair.AccessToken, pair.AccessExpiresAt, pair.RefreshToken, pair.RefreshExpiresAt);

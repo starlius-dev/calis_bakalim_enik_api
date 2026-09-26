@@ -54,4 +54,40 @@ public static class CloudflareRanges
 
         return networks;
     }
+
+    /// <summary>
+    /// The networks allowed to set <c>CF-Connecting-IP</c> for this deployment.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Never empty, and that is the whole point.</b>
+    /// <c>ForwardedHeadersMiddleware</c> only checks who sent the header when
+    /// <c>KnownNetworks</c> or <c>KnownProxies</c> has something in it — with
+    /// both empty it skips the check and accepts the header from <i>any</i>
+    /// caller. Program.cs asserted the opposite for two phases ("leaves the
+    /// trust list EMPTY — ForwardedHeaders then ignores the header entirely,
+    /// which is the safe failure mode"), and the list really was empty outside
+    /// Production. It was the unsafe failure mode, stated as the safe one.</para>
+    ///
+    /// <para><b>Loopback is always trusted.</b> <c>cloudflared</c> runs on this
+    /// host and reaches Kestrel over <c>127.0.0.1</c>, which is not in
+    /// Cloudflare's published ranges. Without it the tunnel's header is ignored
+    /// on every real request, every user collapses into the <c>127.0.0.1</c>
+    /// rate-limit bucket, and one person signing in locks out the rest — the
+    /// same outage the header exists to prevent, reached from the other side.
+    /// Kestrel binds loopback only, so the peer is the tunnel or something
+    /// already inside the machine.</para>
+    /// </remarks>
+    public static List<IPNetwork> TrustList(IEnumerable<string> configured, bool isProduction)
+    {
+        var explicitRanges = Parse(configured);
+
+        var trusted = explicitRanges.Count > 0
+            ? explicitRanges
+            : isProduction ? Parse(Published) : [];
+
+        trusted.Add(new IPNetwork(IPAddress.Loopback, 32));
+        trusted.Add(new IPNetwork(IPAddress.IPv6Loopback, 128));
+
+        return trusted;
+    }
 }

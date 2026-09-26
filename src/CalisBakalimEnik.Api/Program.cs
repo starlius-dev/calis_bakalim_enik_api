@@ -1,3 +1,4 @@
+using System.Net;
 using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Admin;
 using CalisBakalimEnik.Api.Features.Auth;
@@ -76,18 +77,13 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 
-    // Configured ranges win; otherwise Cloudflare's published list. Development
-    // has neither, which leaves the trust list EMPTY — ForwardedHeaders then
-    // ignores the header entirely and the socket address is used, which is the
-    // safe failure mode.
+    // Configured ranges win; otherwise Cloudflare's published list in
+    // Production. Loopback is added to both, and the result is never empty —
+    // see CloudflareRanges.TrustList for why that matters more than it looks.
     var configured = builder.Configuration
         .GetSection("Cloudflare:TrustedNetworks").Get<string[]>() ?? [];
 
-    var trusted = configured.Length > 0
-        ? CloudflareRanges.Parse(configured)
-        : builder.Environment.IsProduction()
-            ? CloudflareRanges.Parse(CloudflareRanges.Published)
-            : [];
+    var trusted = CloudflareRanges.TrustList(configured, builder.Environment.IsProduction());
 
     foreach (var network in trusted) options.KnownNetworks.Add(network);
 });
