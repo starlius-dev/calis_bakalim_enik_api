@@ -69,8 +69,12 @@ echo "==> migration script generated ($(wc -l < "${OUT}/migrate.sql") lines)"
 # ── 3. ship to a staging directory ───────────────────────────────────────
 # Into staging rather than over the live directory, so a half-finished transfer
 # never becomes the thing systemd tries to start.
-$SSH "mkdir -p ${REMOTE_STAGE}"
-rsync -az --delete -e "ssh -p ${SSH_PORT}" "${OUT}/" "${SSH_HOST}:${REMOTE_STAGE}/"
+# tar over ssh rather than rsync, because Git Bash on the dev machine has no
+# rsync and one more thing to install before a deploy is worse than not needing
+# it. Recreating the directory gives the same effect as --delete: nothing from a
+# previous publish survives into this one.
+$SSH "rm -rf ${REMOTE_STAGE} && mkdir -p ${REMOTE_STAGE}"
+tar -cz -C "$OUT" . | $SSH "tar -xz -C ${REMOTE_STAGE}"
 echo "==> uploaded to ${REMOTE_STAGE}"
 
 # ── 4. stop, migrate, swap, start ────────────────────────────────────────
@@ -104,7 +108,11 @@ REMOTE
 
 echo
 echo "--- sudo needed to start ${UNIT} ---"
-$SSH_TTY "sudo systemctl start ${UNIT}"
+# reset-failed first: a unit that has been restart-looping (which is what a
+# missing binary looks like, and what happens if anyone starts this slot before
+# the first publish) can hit the start rate limit, and systemctl start then
+# refuses with "start request repeated too quickly" rather than starting it.
+$SSH_TTY "sudo systemctl reset-failed ${UNIT} 2>/dev/null; sudo systemctl start ${UNIT}"
 
 # ── 5. did it actually come up ───────────────────────────────────────────
 echo "==> waiting for /api/health/ready"
