@@ -216,10 +216,23 @@ server {
         add_header Cache-Control "no-cache, no-store, must-revalidate" always;
     }
 
-    # Flutter emits content-hashed filenames, so everything else caches hard.
+    # Flutter web does NOT emit content-hashed filenames. main.dart.js is
+    # called main.dart.js on every build, and flutter_bootstrap.js asks for it
+    # by that bare name with no version query. Marking it immutable for a year
+    # therefore pins every returning visitor to whichever bundle they happened
+    # to load first, permanently: a deploy reaches nobody who has opened the
+    # app before. That is not theoretical. On 27 September the server held a
+    # bundle from 10:10 while the browser kept running the 09:57 one, through a
+    # hard reload, because immutable does exactly what it says.
+    #
+    # "no-cache" does not mean "do not store" — it stores the file and
+    # revalidates before each use. With ETags a repeat load is a conditional
+    # request answered 304, so the 7MB canvaskit.wasm costs one round trip
+    # rather than one download, and a deploy is picked up on the next load.
     location ~* \.(?:css|js|wasm|woff2?|png|jpg|jpeg|gif|svg|ico|json|ttf|otf)$ {
         include snippets/enik-web-headers-__ENV__.conf;
-        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header Cache-Control "no-cache" always;
+        etag on;
     }
 
     # The app uses HASH routing (/#/bugun), so a deep link is never a real path

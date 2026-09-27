@@ -94,7 +94,7 @@ public static class AuthEndpoints
         if (existing is not null)
         {
             await SendQuietlyAsync(email, logger, request.Email,
-                "Çalış Bakalım Enik — kayıt denemesi",
+                "Çalış Bakalım Enik: kayıt denemesi",
                 $"""
                  Bu adresle zaten bir hesap var, bu yüzden yeni bir hesap açmadık.
 
@@ -153,7 +153,7 @@ public static class AuthEndpoints
         var token = await users.GenerateEmailConfirmationTokenAsync(user);
 
         await SendQuietlyAsync(email, logger, request.Email,
-            "Çalış Bakalım Enik — e-postanı doğrula",
+            "Çalış Bakalım Enik: e-postanı doğrula",
             $"""
              Merhaba {user.DisplayName},
 

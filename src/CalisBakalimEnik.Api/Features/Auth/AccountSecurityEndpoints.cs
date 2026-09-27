@@ -117,14 +117,14 @@ public static class AccountSecurityEndpoints
             {
                 await email.SendAsync(
                     request.Email,
-                    "Çalış Bakalım Enik — şifre sıfırlama",
+                    "Çalış Bakalım Enik: şifre sıfırlama",
                     $"""
                      Şifreni sıfırlamak için aşağıdaki bağlantıya tıkla:
 
                      {EmailLinks.ResetPassword(links.Value, user.Id, token)}
 
                      Bağlantı 30 dakika geçerli. Bu isteği sen yapmadıysan
-                     hiçbir şey yapmana gerek yok — şifren değişmedi.
+                     hiçbir şey yapmana gerek yok. Şifren değişmedi.
                      """,
                     ct);
             }
