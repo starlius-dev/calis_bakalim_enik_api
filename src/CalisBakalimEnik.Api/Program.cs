@@ -29,7 +29,15 @@ builder.Services.AddAuthSetup(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 builder.Services.AddProblemDetails();
-builder.Services.AddOpenApi();
+
+// Only in Development. MapOpenApi is already gated below, so nothing was
+// reachable in Production either way — but registering the generator only where
+// it is served means the deployment cannot start exposing a schema by someone
+// adding one MapOpenApi call without noticing what environment it runs in.
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddOpenApi();
+}
 
 // The Flutter WEB build is a different origin from the API, so without this it
 // cannot make a single call — the browser blocks the preflight.
