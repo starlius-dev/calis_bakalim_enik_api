@@ -7,17 +7,39 @@ public static class SerilogExtensions
 {
     public static void ConfigureSerilog(this IHostBuilder host)
     {
-        host.UseSerilog((context, services, configuration) => configuration
-            .ReadFrom.Configuration(context.Configuration)
-            .ReadFrom.Services(services)
-            .Enrich.FromLogContext()
-            .Enrich.WithProperty("Application", "CalisBakalimEnik.Api")
-            .WriteTo.Console(outputTemplate:
-                "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} <{CorrelationId}>{NewLine}{Exception}")
-            .WriteTo.File("logs/enik-.log",
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 30,
-                restrictedToMinimumLevel: LogEventLevel.Information));
+        host.UseSerilog((context, services, configuration) =>
+        {
+            configuration
+                .ReadFrom.Configuration(context.Configuration)
+                .ReadFrom.Services(services)
+                .Enrich.FromLogContext()
+                .Enrich.WithProperty("Application", "CalisBakalimEnik.Api")
+                .WriteTo.Console(outputTemplate:
+                    "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} <{CorrelationId}>{NewLine}{Exception}");
+
+            // A file sink only where one is configured, and nothing configures
+            // one on the server.
+            //
+            // Under systemd the console sink IS the log: journald captures
+            // stdout, rotates it, and serves it through `journalctl -u`. A
+            // second copy written into the app directory would be wrong three
+            // times over — the unit mounts the filesystem read-only apart from
+            // the data directory, so opening it fails; the path was relative,
+            // so it resolved against WorkingDirectory rather than anywhere
+            // deliberate; and the deploy swap deletes files not present in the
+            // new build, so every release would throw the history away.
+            //
+            // Development sets it, because there is no journald there.
+            var path = context.Configuration["Serilog:FilePath"];
+
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                configuration.WriteTo.File(path,
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 30,
+                    restrictedToMinimumLevel: LogEventLevel.Information);
+            }
+        });
     }
 
     /// <summary>
