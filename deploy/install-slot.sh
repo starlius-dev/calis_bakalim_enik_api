@@ -355,20 +355,18 @@ Redis__KeyPrefix=cbe:
 
 Cors__AllowedOrigins__0=https://${WEB_HOST}
 
-# Second factor OFF for this deployment. Defaults to true in code, so this line
-# is what turns it off and removing it turns it back on.
+# Second factor ON. Defaults to true in code as well, so this line is the
+# explicit statement rather than the thing doing the work -- but it means the
+# value is visible in the file someone reads when they wonder.
 #
-# The client must be built with --dart-define=MFA_ENABLED=false to match. The
-# API is authoritative: with the server off and the client on, the account
-# screen offers an enrolment every call to which answers 404.
+# The client must be built with --dart-define=MFA_ENABLED=true to match, which
+# is a REBUILD, not a config edit: the flag is compiled into the web bundle.
+# The API is authoritative, and GET /api/version reports its value, so a
+# mismatch is visible rather than mysterious.
 #
-# Enrolled factors are SKIPPED, not deleted — flipping this back to true asks
-# for the authenticator somebody already has rather than locking them out.
-#
-# This is a real reduction in security and is reasonable for a test team who
-# would otherwise spend the first hour scanning QR codes. It is not reasonable
-# once there are customers.
-Mfa__Enabled=false
+# Turning this off does not delete enrolled factors, it skips them -- so it can
+# be flipped back without locking out anyone who already has an authenticator.
+Mfa__Enabled=true
 
 Jwt__Issuer=https://${API_HOST}
 Jwt__Audience=calisbakalimenik.app
