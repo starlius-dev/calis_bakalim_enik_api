@@ -333,7 +333,7 @@ else
 
 Email__Provider=Resend
 Email__ApiKey=
-Email__From=Çalış Bakalım Enik <calis-bakalim-enik@business-application.starlius.com>
+Email__From=Çalış Bakalım Enik <calis-bakalim-enik@starlius.com>
 Email__AppBaseUrl=https://${WEB_HOST}
 
 DataProtection__KeyPath=${FILES_DIR}/keys
