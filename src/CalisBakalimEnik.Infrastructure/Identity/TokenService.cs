@@ -132,20 +132,42 @@ public sealed class TokenService : ITokenService, IDisposable
             return rsa;
         }
 
-        // Development convenience only: persist a key so a restart does not
-        // invalidate every token mid-debug. Production supplies the PEM through
-        // the environment and never reaches this branch.
-        if (File.Exists(options.DevKeyPath))
+        // Otherwise the key lives in a file, created once and then reused. The
+        // path has to be durable storage: this key signs every access token, so
+        // replacing it signs every user out, and a deploy deletes anything in
+        // the app directory that the new build does not carry.
+        if (string.IsNullOrWhiteSpace(options.PrivateKeyPath))
         {
-            rsa.ImportFromPem(File.ReadAllText(options.DevKeyPath));
+            throw new InvalidOperationException(
+                "Neither Jwt:PrivateKeyPem nor Jwt:PrivateKeyPath is configured, so "
+                + "there is nothing to sign tokens with. Point Jwt:PrivateKeyPath at "
+                + "a file on durable storage.");
+        }
+
+        if (File.Exists(options.PrivateKeyPath))
+        {
+            rsa.ImportFromPem(File.ReadAllText(options.PrivateKeyPath));
             return rsa;
         }
 
-        File.WriteAllText(options.DevKeyPath, rsa.ExportRSAPrivateKeyPem());
+        var directory = Path.GetDirectoryName(options.PrivateKeyPath);
+
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+        File.WriteAllText(options.PrivateKeyPath, rsa.ExportRSAPrivateKeyPem());
+
+        // A private key readable by anything else on the box is a key anything
+        // else on the box can mint tokens with.
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                options.PrivateKeyPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+
         logger.LogWarning(
-            "No Jwt:PrivateKeyPem configured — generated a development key at {Path}. " +
-            "Production MUST supply one through the environment.",
-            options.DevKeyPath);
+            "No signing key existed — generated one at {Path}. Back it up with the "
+            + "database: losing it invalidates every token and signs everybody out.",
+            options.PrivateKeyPath);
 
         return rsa;
     }

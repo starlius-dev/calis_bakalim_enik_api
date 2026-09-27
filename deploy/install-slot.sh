@@ -373,6 +373,17 @@ Mfa__Enabled=false
 Jwt__Issuer=https://${API_HOST}
 Jwt__Audience=calisbakalimenik.app
 
+# The RS256 signing key. Created on first boot and reused forever after.
+#
+# It lives under files/ rather than in the app directory for the same reason the
+# Data Protection key ring does: the deploy swap runs --delete, so anything in
+# the app directory is destroyed by the next release. A new signing key works
+# perfectly for tokens issued after it, so the failure is silent — every user is
+# simply signed out, on every deploy, and nothing logs a reason.
+#
+# BACK THIS UP WITH THE DATABASE. Losing it signs everybody out once.
+Jwt__PrivateKeyPath=${FILES_DIR}/jwt-signing-key.pem
+
 # Empty means no version gate, which is the right default: a floor that turns
 # itself on locks every tester out of a working app on a routine deploy.
 # Client__MinimumVersion=

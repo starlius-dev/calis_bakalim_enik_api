@@ -18,8 +18,16 @@ public sealed class JwtOptions
     public string? PrivateKeyPem { get; set; }
 
     /// <summary>
-    /// Where to persist a development key so restarts do not invalidate every
-    /// token. Never used outside Development.
+    /// Where the signing key is kept, used when <see cref="PrivateKeyPem"/> is
+    /// not supplied. Created on first use if it does not exist.
     /// </summary>
-    public string DevKeyPath { get; set; } = "jwt-dev-key.pem";
+    /// <remarks>
+    /// This must be DURABLE STORAGE, outside the directory a deploy replaces.
+    /// The key is what every issued access token is signed with, so losing it
+    /// signs everybody out — and a path inside the app directory is lost on the
+    /// next release, because the swap deletes whatever the new build does not
+    /// contain. It is also the reason a PEM in the environment is awkward here:
+    /// systemd reads an EnvironmentFile literally, and a PEM is multi-line.
+    /// </remarks>
+    public string? PrivateKeyPath { get; set; }
 }

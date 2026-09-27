@@ -134,6 +134,48 @@ if (!app.Environment.IsDevelopment()
         + "Without it every enrolled authenticator app breaks on the next deploy.");
 }
 
+if (!app.Environment.IsDevelopment())
+{
+    // The RS256 signing key, checked at STARTUP rather than left to fail on the
+    // first request. TokenService is a singleton resolved by the authentication
+    // middleware, so without this the service starts, reports itself running,
+    // and then throws a read-only-filesystem IOException at whoever arrives
+    // first — including the readiness probe. A deployment that is "up" and
+    // answers nothing is the worst of the available failures.
+    var pem = builder.Configuration["Jwt:PrivateKeyPem"];
+    var keyPath = builder.Configuration["Jwt:PrivateKeyPath"];
+
+    if (string.IsNullOrWhiteSpace(pem) && string.IsNullOrWhiteSpace(keyPath))
+    {
+        throw new InvalidOperationException(
+            "Jwt:PrivateKeyPath must point at a file on durable storage outside "
+            + "Development (or Jwt:PrivateKeyPem must carry the key). Without one "
+            + "there is nothing to sign access tokens with.");
+    }
+
+    // And it must not live in the app directory. That directory is replaced on
+    // every deploy, with --delete, so a key written there is destroyed by the
+    // next release and every user is signed out — silently, because a freshly
+    // generated key works perfectly for tokens issued after it.
+    if (!string.IsNullOrWhiteSpace(keyPath))
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        var baseDirectory = Path.TrimEndingDirectorySeparator(
+            Path.GetFullPath(AppContext.BaseDirectory));
+
+        if (Path.GetFullPath(keyPath).StartsWith(baseDirectory, comparison))
+        {
+            throw new InvalidOperationException(
+                $"Jwt:PrivateKeyPath ('{keyPath}') is inside the application "
+                + "directory, which the next deploy replaces. Point it at durable "
+                + "storage — the same place DataProtection:KeyPath lives.");
+        }
+    }
+}
+
 // Order is load-bearing: the denylist and current-user resolution both read a
 // VALIDATED claim, so they must sit after authentication. See
 // docs/ARCHITECTURE.md §2.
