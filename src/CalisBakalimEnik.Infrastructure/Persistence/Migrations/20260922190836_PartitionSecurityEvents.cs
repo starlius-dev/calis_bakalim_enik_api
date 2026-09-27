@@ -146,11 +146,24 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
             // this the next insert reuses id 1 and violates the primary key.
             // is_called = false makes nextval return exactly this value, which
             // is also correct for an empty table (max 0 → next 1).
+            //
+            // Wrapped in DO/PERFORM rather than written as a bare SELECT,
+            // because `dotnet ef migrations script --idempotent` wraps every
+            // migration in `DO $EF$ ... END $EF$`, and inside PL/pgSQL a SELECT
+            // whose result nobody reads is the error "query has no destination
+            // for result data". Applying migrations directly does not wrap
+            // them, so the bare form worked in development and failed only on
+            // the first scripted deploy. PERFORM alone is not the fix: it is
+            // invalid outside PL/pgSQL, so the DO block is what makes this
+            // correct in both paths. The tags differ ($$ inside $EF$) so the
+            // nesting is unambiguous.
             migrationBuilder.Sql("""
-                SELECT setval(
-                    pg_get_serial_sequence('security_events', 'id'),
-                    COALESCE((SELECT MAX(id) FROM security_events), 0) + 1,
-                    false);
+                DO $$ BEGIN
+                    PERFORM setval(
+                        pg_get_serial_sequence('security_events', 'id'),
+                        COALESCE((SELECT MAX(id) FROM security_events), 0) + 1,
+                        false);
+                END $$;
                 """);
 
             migrationBuilder.Sql("DROP TABLE security_events_legacy;");
@@ -349,10 +362,12 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                 """);
 
             migrationBuilder.Sql("""
-                SELECT setval(
-                    pg_get_serial_sequence('security_events', 'id'),
-                    COALESCE((SELECT MAX(id) FROM security_events), 0) + 1,
-                    false);
+                DO $$ BEGIN
+                    PERFORM setval(
+                        pg_get_serial_sequence('security_events', 'id'),
+                        COALESCE((SELECT MAX(id) FROM security_events), 0) + 1,
+                        false);
+                END $$;
                 """);
 
             migrationBuilder.Sql("""

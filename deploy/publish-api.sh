@@ -54,17 +54,31 @@ echo "==> built"
 # --idempotent so it can be applied to a database at any migration, including
 # one already up to date. Generated rather than run by EF against the server:
 # the file can be read before it is applied, and the box needs no EF tooling.
+# NOT --no-build. dotnet ef reads the DEFAULT (Debug) build output, which the
+# Release publish above does not touch, so --no-build silently generates the
+# script from whatever was last built in Debug. A migration edited and then
+# published would ship a stale script, and it surfaces as SQL that does not
+# match the code. Letting ef build costs seconds and removes a class of
+# wrong-deploy.
 dotnet ef migrations script \
     --idempotent \
     --project src/CalisBakalimEnik.Infrastructure \
     --startup-project src/CalisBakalimEnik.Api \
-    --output "${OUT}/migrate.sql" \
-    --no-build 2>/dev/null \
-  || dotnet ef migrations script --idempotent \
-        --project src/CalisBakalimEnik.Infrastructure \
-        --startup-project src/CalisBakalimEnik.Api \
-        --output "${OUT}/migrate.sql"
+    --output "${OUT}/migrate.sql"
 echo "==> migration script generated ($(wc -l < "${OUT}/migrate.sql") lines)"
+
+# --idempotent wraps every migration in a DO block, which makes the migration's
+# SQL PL/pgSQL. There a query whose result nobody reads is the error "query has
+# no destination for result data" -- so a bare SELECT works when migrations are
+# applied directly and fails only here, on deploy, halfway through a script.
+# Catch it before the database is touched. The fix in the migration is to write
+# it as a DO block using PERFORM instead of SELECT.
+if grep -nE '^    (SELECT|WITH) ' "${OUT}/migrate.sql"; then
+    echo "!! the lines above are bare queries inside an idempotent DO wrapper" >&2
+    echo "   and will fail with 'query has no destination for result data'." >&2
+    exit 1
+fi
+echo "==> no bare queries inside the idempotent wrappers"
 
 # ── 3. ship to a staging directory ───────────────────────────────────────
 # Into staging rather than over the live directory, so a half-finished transfer
