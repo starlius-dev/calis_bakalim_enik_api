@@ -37,6 +37,35 @@ cd "$(dirname "$0")/.."
 
 echo "############ API -> ${ENV_NAME} ############"
 
+# ── 0. version ───────────────────────────────────────────────────────────
+# The build number lives in Directory.Build.props (<DefaultBuildNumber>) and is
+# bumped and committed on every qa publish, the same way publish-web.sh bumps
+# pubspec.yaml. Prod ships the number qa tested. The short commit hash is
+# stamped in too, with -dirty when uncommitted changes went into the build, so
+# /api/version names the exact source it came from. See docs/VERSIONING.md.
+PROPS=Directory.Build.props
+BUILD=$(grep -oE '<DefaultBuildNumber>[0-9]+' "$PROPS" | grep -oE '[0-9]+$' || true)
+[ -n "$BUILD" ] || { echo "!! no <DefaultBuildNumber> in $PROPS" >&2; exit 1; }
+
+if [ "$ENV_NAME" = qa ]; then
+    BUILD=$((BUILD + 1))
+    sed -i -E "s|<DefaultBuildNumber>[0-9]+</DefaultBuildNumber>|<DefaultBuildNumber>${BUILD}</DefaultBuildNumber>|" "$PROPS"
+    if git commit -q "$PROPS" -m "chore(version): api build ${BUILD}" 2>/dev/null; then
+        echo "==> api build number -> ${BUILD} (committed, not pushed)"
+    else
+        echo "!! could not commit the build number bump" >&2; exit 1
+    fi
+fi
+
+if [ "$ENV_NAME" = prod ] && ! git diff --quiet HEAD -- src "$PROPS"; then
+    echo "!! uncommitted changes under src/. Prod ships committed code only." >&2
+    exit 1
+fi
+
+GIT_SHA=$(git rev-parse --short=8 HEAD)
+git diff --quiet HEAD -- src "$PROPS" || GIT_SHA="${GIT_SHA}-dirty"
+echo "==> version $(grep -oE '<VersionPrefix>[^<]+' "$PROPS" | cut -d'>' -f2)+${BUILD}.${GIT_SHA}"
+
 # ── 1. build ─────────────────────────────────────────────────────────────
 # Self-contained linux-x64, because the unit's ExecStart is the binary itself
 # rather than `dotnet X.dll` — the house style here, and it means the box needs
@@ -47,6 +76,8 @@ dotnet publish "$PROJ_FILE" \
     -r linux-x64 \
     --self-contained true \
     -p:PublishSingleFile=false \
+    -p:BuildNumber="$BUILD" \
+    -p:GitSha="$GIT_SHA" \
     -o "$OUT"
 echo "==> built"
 

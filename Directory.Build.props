@@ -13,7 +13,10 @@
   <!-- Single source of truth for the product version. See docs/VERSIONING.md §2. -->
   <PropertyGroup>
     <VersionPrefix>0.1.0</VersionPrefix>
-    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+    <!-- Bumped and committed by deploy/publish-api.sh on every qa publish;
+         prod ships the number qa tested. Never hand-edited. -->
+    <DefaultBuildNumber>0</DefaultBuildNumber>
+    <BuildNumber Condition="'$(BuildNumber)' == ''">$(DefaultBuildNumber)</BuildNumber>
     <GitSha Condition="'$(GitSha)' == ''">local</GitSha>
     <InformationalVersion>$(VersionPrefix)+$(BuildNumber).$(GitSha)</InformationalVersion>
     <!-- SourceLink otherwise appends "+<sha>" again, producing 0.1.0+0.local.<sha>. -->
