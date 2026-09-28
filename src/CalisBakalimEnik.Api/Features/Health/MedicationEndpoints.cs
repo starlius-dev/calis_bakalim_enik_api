@@ -340,6 +340,9 @@ public static class MedicationEndpoints
         Guid id, AppDbContext db, IClock clock, ClaimsPrincipal principal, CancellationToken ct) =>
         SetDoseAsync(id, db, clock, principal, ct, DoseStatus.Skipped);
 
+    /// <summary>How early a dose may be marked taken, before its scheduled time.</summary>
+    internal static readonly TimeSpan EarlyTakeWindow = TimeSpan.FromHours(2);
+
     private static async Task<IResult> SetDoseAsync(
         Guid id,
         AppDbContext db,
@@ -353,20 +356,49 @@ public static class MedicationEndpoints
         var dose = await db.MedicationDoses.FirstOrDefaultAsync(d => d.Id == id, ct);
         if (dose is null) return Results.NotFound();
 
-        dose.Status = status;
-        dose.TakenAt = status == DoseStatus.Taken ? clock.UtcNow : null;
-
-        // Taking a dose consumes stock. Skipping does not — the point of
-        // skipping is that the tablet is still in the box.
-        if (status == DoseStatus.Taken)
+        // A dose cannot be marked taken long before it is due. There was no
+        // check at all, and a dose scheduled for 08:00 the next morning was
+        // recorded as taken four seconds after its medication was created,
+        // eighteen hours early: adherence then read 100% for something nobody
+        // had taken. Taking one a little early is normal, so there is a window.
+        if (status == DoseStatus.Taken
+            && dose.Status != DoseStatus.Taken
+            && dose.ScheduledAt > clock.UtcNow + EarlyTakeWindow)
         {
-            var medication = await db.Medications
-                .FirstOrDefaultAsync(m => m.Id == dose.MedicationId, ct);
-
-            if (medication?.StockCount is > 0) medication.StockCount--;
+            return Results.Problem(
+                title: "Bu dozun zamanı henüz gelmedi.",
+                detail: "Bir doz en erken planlanan saatinden 2 saat önce "
+                        + "alındı olarak işaretlenebilir.",
+                statusCode: StatusCodes.Status409Conflict);
         }
 
-        await db.SaveChangesAsync(ct);
+        // Setting a dose to the state it is already in changes nothing. Before
+        // this, a second tap on "taken" ran the whole update again and took a
+        // second tablet off the stock count.
+        if (dose.Status != status)
+        {
+            var wasTaken = dose.Status == DoseStatus.Taken;
+
+            dose.Status = status;
+            dose.TakenAt = status == DoseStatus.Taken ? clock.UtcNow : null;
+
+            // Taking a dose consumes stock; skipping does not, because the
+            // tablet is still in the box. So stock moves only on the way into
+            // Taken, and comes back on the way out of it (taken, then skipped).
+            var isTaken = status == DoseStatus.Taken;
+            if (wasTaken != isTaken)
+            {
+                var medication = await db.Medications
+                    .FirstOrDefaultAsync(m => m.Id == dose.MedicationId, ct);
+
+                if (medication?.StockCount is { } stock)
+                {
+                    medication.StockCount = isTaken ? Math.Max(0, stock - 1) : stock + 1;
+                }
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
 
         var described = await db.MedicationDoses
             .Where(d => d.Id == id)
