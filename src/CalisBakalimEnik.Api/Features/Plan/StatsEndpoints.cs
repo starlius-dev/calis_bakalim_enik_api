@@ -42,7 +42,8 @@ public sealed record NutritionStats(
     decimal? WeightKg,
     decimal? WeightChangeKg);
 
-public sealed record MedicationStats(int AdherencePct, int Taken, int Resolved);
+/// <summary>AdherencePct is null when no dose in the range has resolved.</summary>
+public sealed record MedicationStats(int? AdherencePct, int Taken, int Resolved);
 
 public sealed record StatsResponse(
     DateOnly From,
@@ -364,8 +365,10 @@ public static class StatsEndpoints
         var resolved = doses.Count(s => s != DoseStatus.Pending);
         var taken = doses.Count(s => s == DoseStatus.Taken);
 
+        // Nothing resolved is no figure, not 100%: an unrecorded period is not
+        // a perfect one.
         return new MedicationStats(
-            resolved == 0 ? 100 : (int)Math.Round(100.0 * taken / resolved),
+            resolved == 0 ? null : (int)Math.Round(100.0 * taken / resolved),
             taken,
             resolved);
     }

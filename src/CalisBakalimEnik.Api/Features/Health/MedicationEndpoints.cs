@@ -39,7 +39,8 @@ public sealed record MedicationResponse(
     DateOnly StartedOn,
     DateOnly? EndedOn,
     bool Paused,
-    int AdherencePct);
+    // Null until at least one dose has resolved. See DescribeManyAsync.
+    int? AdherencePct);
 
 public sealed record DoseResponse(
     Guid Id,
@@ -435,8 +436,13 @@ public static class MedicationEndpoints
         return medications.Select(m =>
         {
             var stats = adherence.FirstOrDefault(a => a.MedicationId == m.Id);
-            var pct = stats is null || stats.Total == 0
-                ? 100
+
+            // Null, not 100, when nothing has resolved yet. A new medication,
+            // or one whose doses are all still inside MissedGrace, has no
+            // record either way, and reporting that as a perfect score showed
+            // 100% on a medication nobody had taken once.
+            int? pct = stats is null || stats.Total == 0
+                ? null
                 : (int)Math.Round(stats.Taken * 100.0 / stats.Total);
 
             return new MedicationResponse(
