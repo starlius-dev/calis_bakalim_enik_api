@@ -47,6 +47,13 @@ public sealed class RetentionOptions
     public int SecurityEventDays { get; set; } = 365;
 
     /// <summary>
+    /// How long the anonymised security events of an erased account are kept,
+    /// counted from the erasure: six months, decided 29 Sep 2026 and to be
+    /// stated in the privacy policy.
+    /// </summary>
+    public int ErasedSecurityEventDays { get; set; } = 183;
+
+    /// <summary>
     /// Dead refresh tokens, counted from the later of expiry and revocation.
     /// </summary>
     /// <remarks>

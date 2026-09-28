@@ -16,6 +16,10 @@ public enum SecurityEventType : short
     RoleChanged = 12,
     AccountDeleted = 13,
     Logout = 14,
+    DataExported = 15,
+    AccountDeletionRequested = 16,
+    AccountDeletionCancelled = 17,
+    StepUp = 18,
 }
 
 /// <summary>

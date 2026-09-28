@@ -14,6 +14,7 @@ namespace CalisBakalimEnik.Infrastructure.Identity;
 public sealed class TokenService : ITokenService, IDisposable
 {
     public const string RoleClaimType = "role";
+    public const string DeletionPendingClaim = "del";
 
     private readonly JwtOptions _options;
     private readonly IClock _clock;
@@ -61,6 +62,8 @@ public sealed class TokenService : ITokenService, IDisposable
         // second factor for a sensitive action without re-reading the database.
         claims.Add(new Claim("amr", "pwd"));
         if (subject.MfaSatisfied) claims.Add(new Claim("amr", "mfa"));
+
+        if (subject.DeletionPending) claims.Add(new Claim(DeletionPendingClaim, "1"));
 
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,

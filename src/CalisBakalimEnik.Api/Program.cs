@@ -1,5 +1,6 @@
 using System.Net;
 using CalisBakalimEnik.Api.Extensions;
+using CalisBakalimEnik.Api.Features.Account;
 using CalisBakalimEnik.Api.Features.Admin;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Api.Features.Content;
@@ -189,6 +190,7 @@ if (!app.Environment.IsDevelopment())
 // docs/ARCHITECTURE.md §2.
 app.UseAuthentication();
 app.UseMiddleware<JwtDenylistMiddleware>();
+app.UseMiddleware<DeletionPendingMiddleware>();
 
 // After authentication so the budget is partitioned by the real user, and
 // before authorization so a flood of forbidden requests is still metered.
@@ -206,6 +208,7 @@ api.MapSystemEndpoints();
 api.MapAuthEndpoints();
 api.MapMfaEndpoints();
 api.MapAccountSecurityEndpoints();
+api.MapAccountDataEndpoints();
 api.MapNotificationEndpoints();
 api.MapDeviceEndpoints();
 api.MapTaskEndpoints();

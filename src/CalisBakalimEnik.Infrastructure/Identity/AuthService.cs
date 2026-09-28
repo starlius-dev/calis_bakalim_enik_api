@@ -199,7 +199,8 @@ public sealed class AuthService(
             roles.ToArray(),
             permissions,
             mfaSatisfied,
-            familyId);
+            familyId,
+            DeletionPending: user.DeletionScheduledAt is not null);
 
         var accessToken = tokens.CreateAccessToken(subject, out var accessExpires, out _);
 

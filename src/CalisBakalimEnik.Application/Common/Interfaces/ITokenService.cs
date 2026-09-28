@@ -17,7 +17,10 @@ public sealed record AccessTokenSubject(
     // one sign-in on one device, because rotation revokes the row it replaces,
     // so exactly one live row per family. Carried as `sid` so the session list
     // can mark the caller's own row and a password change can spare it.
-    Guid SessionId);
+    Guid SessionId,
+    // The account has a scheduled deletion. Carried as `del` so a request can be
+    // refused without a database read; see DeletionPendingMiddleware.
+    bool DeletionPending = false);
 
 public interface ITokenService
 {

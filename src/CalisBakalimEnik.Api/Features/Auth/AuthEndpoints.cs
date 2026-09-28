@@ -35,7 +35,10 @@ public sealed record MeResponse(
     string Locale,
     string TimeZone,
     IReadOnlyCollection<string> Roles,
-    IReadOnlyCollection<string> Permissions);
+    IReadOnlyCollection<string> Permissions,
+    // Set while a deletion is pending (D15); the client shows the cancel
+    // screen instead of the app.
+    DateTimeOffset? DeletionScheduledFor = null);
 
 public sealed record UpdateMeRequest(
     string? DisplayName,
@@ -371,7 +374,7 @@ public static class AuthEndpoints
         return Results.Ok(ToResponse(pair));
     }
 
-    private static IResult Locked(LockoutState state, HttpContext http)
+    internal static IResult Locked(LockoutState state, HttpContext http)
     {
         var seconds = (int)Math.Ceiling(state.RetryAfter?.TotalSeconds ?? 60);
         http.Response.Headers.RetryAfter = seconds.ToString();
@@ -454,7 +457,8 @@ public static class AuthEndpoints
             user.Locale,
             user.TimeZone,
             roles.ToArray(),
-            currentUser.Permissions));
+            currentUser.Permissions,
+            user.DeletionScheduledAt));
     }
 
     /// <summary>
@@ -547,7 +551,8 @@ public static class AuthEndpoints
             user.Locale,
             user.TimeZone,
             roles.ToArray(),
-            currentUser.Permissions));
+            currentUser.Permissions,
+            user.DeletionScheduledAt));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

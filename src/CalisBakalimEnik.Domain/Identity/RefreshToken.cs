@@ -9,6 +9,7 @@ public enum RefreshRevokedReason : short
     ReuseDetected = 3,
     Admin = 4,
     PasswordChange = 5,
+    AccountDeletion = 6,
 }
 
 /// <summary>

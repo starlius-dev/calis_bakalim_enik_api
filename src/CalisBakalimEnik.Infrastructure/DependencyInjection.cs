@@ -87,6 +87,15 @@ public static class DependencyInjection
             configuration.GetSection(RetentionOptions.SectionName));
         services.AddHostedService<RetentionCleanup>();
 
+        // D15/D16: the person's own data, exported on request and erased a
+        // week after a deletion request. UserDataMap says where it all lives.
+        services.Configure<AccountDeletionOptions>(
+            configuration.GetSection(AccountDeletionOptions.SectionName));
+        services.AddScoped<UserDataExporter>();
+        services.AddScoped<AccountErasure>();
+        services.AddScoped<StepUpTokens>();
+        services.AddHostedService<AccountErasureJob>();
+
         // security_events is range-partitioned by month. A month with no
         // partition is not a housekeeping problem — a row is written on every
         // login, so it is a service nobody can sign in to. This keeps the
