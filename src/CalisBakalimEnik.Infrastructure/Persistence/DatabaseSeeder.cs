@@ -1,20 +1,24 @@
 using System.Security.Claims;
+using CalisBakalimEnik.Domain.Health;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace CalisBakalimEnik.Infrastructure.Persistence;
 
 /// <summary>
-/// Idempotent seeding of the three global roles and their permission claims.
+/// Idempotent seeding of the three global roles and their permission claims,
+/// and of the shared exercise catalogue.
 /// Runs after migration, never inside one — a migration that seeds cannot be
 /// re-run when the permission set changes.
 /// </summary>
 public sealed class DatabaseSeeder(
     RoleManager<AppRole> roles,
     UserManager<AppUser> users,
+    AppDbContext db,
     IConfiguration configuration,
     ILogger<DatabaseSeeder> logger)
 {
@@ -22,6 +26,49 @@ public sealed class DatabaseSeeder(
     {
         await SeedRolesAsync(ct);
         await BootstrapAdminAsync(ct);
+        await SeedExercisesAsync(ct);
+    }
+
+    /// <summary>
+    /// Inserts any <see cref="ExerciseCatalogue"/> entry not already present as
+    /// a system exercise.
+    /// </summary>
+    /// <remarks>
+    /// Nothing ever filled the catalogue before this, so the workout planner's
+    /// picker searched an empty table and every account hit "Hareket yok" with
+    /// no way forward.
+    ///
+    /// Matched by name among system rows only, case-insensitively, so it is
+    /// safe on every start: existing rows are never updated or removed, and a
+    /// user's own exercise with the same name is left alone.
+    /// </remarks>
+    private async Task SeedExercisesAsync(CancellationToken ct)
+    {
+        var existing = await db.Exercises
+            .Where(e => e.IsSystem && e.OwnerId == null)
+            .Select(e => e.Name.ToLower())
+            .ToListAsync(ct);
+
+        var known = existing.ToHashSet();
+
+        var missing = ExerciseCatalogue.Entries
+            .Where(e => !known.Contains(e.Name.ToLowerInvariant()))
+            .Select(e => new Exercise
+            {
+                OwnerId = null,
+                Name = e.Name,
+                Category = e.Category,
+                Muscles = e.Muscles,
+                IsSystem = true,
+            })
+            .ToList();
+
+        if (missing.Count == 0) return;
+
+        db.Exercises.AddRange(missing);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("Seeded {Count} system exercises", missing.Count);
     }
 
     /// <summary>
