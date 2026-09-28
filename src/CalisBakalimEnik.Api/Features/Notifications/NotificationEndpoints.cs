@@ -67,8 +67,25 @@ public static class NotificationEndpoints
         return app;
     }
 
+    /// <summary>
+    /// Notifications whose moment has come: sent straight away, or scheduled
+    /// for a time that has now passed.
+    /// </summary>
+    /// <remarks>
+    /// Reminders are created up front, one per upcoming dose, with a future
+    /// ScheduledAt. Without this, adding one medication put a fortnight of
+    /// reminders for doses that had not happened yet straight into the inbox
+    /// and onto the unread badge. The list, the badge and mark-all-read all use
+    /// this, so the three can never disagree about what is in the inbox.
+    /// </remarks>
+    private static IQueryable<Notification> Due(
+        AppDbContext db, Guid userId, DateTimeOffset now) =>
+        db.Notifications.Where(n =>
+            n.UserId == userId && (n.ScheduledAt == null || n.ScheduledAt <= now));
+
     private static async Task<IResult> ListAsync(
         AppDbContext db,
+        IClock clock,
         ClaimsPrincipal principal,
         CancellationToken ct,
         int take = 30,
@@ -80,7 +97,7 @@ public static class NotificationEndpoints
         // Keyset pagination on created_at, which is exactly what
         // ix_notifications_inbox is ordered for. OFFSET would degrade as the
         // inbox grows and this is the screen opened most often.
-        var query = db.Notifications.Where(n => n.UserId == userId);
+        var query = Due(db, userId.Value, clock.UtcNow);
         if (before is not null) query = query.Where(n => n.CreatedAt < before);
 
         var page = await query
@@ -135,15 +152,15 @@ public static class NotificationEndpoints
     }
 
     private static async Task<IResult> UnreadCountAsync(
-        AppDbContext db, ClaimsPrincipal principal, CancellationToken ct)
+        AppDbContext db, IClock clock, ClaimsPrincipal principal, CancellationToken ct)
     {
         var userId = MfaEndpoints.UserId(principal);
         if (userId is null) return Results.Unauthorized();
 
         // The badge comes from here rather than from local counting, so the
         // same account on two devices agrees. See docs/NOTIFICATIONS.md §8.
-        var count = await db.Notifications
-            .CountAsync(n => n.UserId == userId && n.ReadAt == null, ct);
+        var count = await Due(db, userId.Value, clock.UtcNow)
+            .CountAsync(n => n.ReadAt == null, ct);
 
         return Results.Ok(new { count });
     }
@@ -213,8 +230,10 @@ public static class NotificationEndpoints
         var userId = MfaEndpoints.UserId(principal);
         if (userId is null) return Results.Unauthorized();
 
-        var updated = await db.Notifications
-            .Where(n => n.UserId == userId && n.ReadAt == null)
+        // Only what the inbox shows. Marking a reminder read before it has
+        // even arrived would make it land already read.
+        var updated = await Due(db, userId.Value, clock.UtcNow)
+            .Where(n => n.ReadAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.ReadAt, clock.UtcNow), ct);
 
         return Results.Ok(new { updated });
