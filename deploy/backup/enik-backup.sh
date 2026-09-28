@@ -100,6 +100,28 @@ for env in $BACKUP_ENVS; do
     echo "==> $(du -h "$OUT/$env/${name}" | cut -f1)  ${name}"
 done
 
+# ── the server's own configuration ───────────────────────────────────────
+# What a rebuilt box needs besides Enik's data: every nginx site, the systemd
+# units, the firewall, ssh, fail2ban, logrotate and apt settings. Read as
+# servrinuse, so root-only files (the tunnel token, redis.conf, ufw's rule
+# files) are skipped rather than failing the run; the tunnel token can be
+# reissued from the Cloudflare dashboard. Only ever read, never changed.
+echo "== server"
+mkdir -p "$OUT/server"
+name="cbe-server-${STAMP}.tar.zst.age"
+if tar -C / --ignore-failed-read -cf - \
+        etc/nginx etc/systemd/system etc/ssh/sshd_config etc/ssh/sshd_config.d \
+        etc/fail2ban etc/logrotate.d etc/apt/apt.conf.d etc/apt/sources.list.d \
+        etc/postgresql etc/sudoers.d etc/hosts etc/fstab \
+        2> /dev/null | zstd -q -10 | age -r "$AGE_RECIPIENT" > "$OUT/server/.${name}.partial"; then
+    mv "$OUT/server/.${name}.partial" "$OUT/server/${name}"
+    echo "==> $(du -h "$OUT/server/${name}" | cut -f1)  ${name}"
+else
+    rm -f "$OUT/server/.${name}.partial"
+    echo "!! server configuration bundle failed" >&2
+    failed=1
+fi
+
 # ── off-site ─────────────────────────────────────────────────────────────
 # --ignore-existing: a file is written once and never touched again. The
 # service account is only a Contributor on the shared drive, which lets it add
