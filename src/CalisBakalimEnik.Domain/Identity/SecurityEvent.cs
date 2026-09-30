@@ -20,6 +20,9 @@ public enum SecurityEventType : short
     AccountDeletionRequested = 16,
     AccountDeletionCancelled = 17,
     StepUp = 18,
+    EmailChangeRequested = 19,
+    EmailChanged = 20,
+    DisplayNameChanged = 21,
 }
 
 /// <summary>

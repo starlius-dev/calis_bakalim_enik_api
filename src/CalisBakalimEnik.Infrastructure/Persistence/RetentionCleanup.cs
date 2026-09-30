@@ -162,6 +162,9 @@ public sealed class RetentionCleanup(
             "expires_at < @cutoff AND COALESCE(revoked_at, expires_at) < @cutoff",
             o.RefreshTokenDays),
 
+        new("previous names and e-mail addresses", "personal_detail_changes",
+            "changed_at < @cutoff", o.PersonalDetailHistoryDays),
+
         new("processed outbox messages", "outbox_messages",
             "processed_at IS NOT NULL AND processed_at < @cutoff",
             o.ProcessedOutboxDays),

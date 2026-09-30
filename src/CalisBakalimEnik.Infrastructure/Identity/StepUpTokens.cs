@@ -19,9 +19,12 @@ public sealed class StepUpTokens(ICacheStore cache)
     public const string Export = "export";
     public const string Delete = "delete";
 
+    /// <summary>Changing the name or e-mail address (J78).</summary>
+    public const string Details = "details";
+
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
 
-    public static bool IsPurpose(string? purpose) => purpose is Export or Delete;
+    public static bool IsPurpose(string? purpose) => purpose is Export or Delete or Details;
 
     public async Task<string> IssueAsync(Guid userId, string purpose, CancellationToken ct)
     {

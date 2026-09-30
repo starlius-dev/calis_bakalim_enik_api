@@ -209,6 +209,7 @@ api.MapAuthEndpoints();
 api.MapMfaEndpoints();
 api.MapAccountSecurityEndpoints();
 api.MapAccountDataEndpoints();
+api.MapPersonalDetailsEndpoints();
 api.MapNotificationEndpoints();
 api.MapDeviceEndpoints();
 api.MapTaskEndpoints();

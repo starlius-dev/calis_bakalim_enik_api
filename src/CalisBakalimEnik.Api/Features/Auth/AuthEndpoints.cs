@@ -488,19 +488,14 @@ public static class AuthEndpoints
         var user = await users.FindByIdAsync(userId.Value.ToString());
         if (user is null) return Results.Unauthorized();
 
-        if (request.DisplayName is { } name)
+        // The name moved behind the step-up with the e-mail address (J78):
+        // PATCH /account/details. Sending the current name is harmless.
+        if (request.DisplayName is { } name && name.Trim() != user.DisplayName)
         {
-            var trimmed = name.Trim();
-
-            if (trimmed.Length is < 2 or > 100)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["displayName"] = ["Ad 2 ile 100 karakter arasında olmalı."],
-                });
-            }
-
-            user.DisplayName = trimmed;
+                ["displayName"] = ["Adını Profil > Kişisel bilgiler bölümünden değiştirebilirsin."],
+            });
         }
 
         if (request.Locale is { } locale)

@@ -16,6 +16,9 @@ public static class EmailLinks
     public static string ResetPassword(EmailOptions options, Guid userId, string token) =>
         $"{Root(options)}/#/sifre-sifirla/yeni?userId={userId}&token={Uri.EscapeDataString(token)}";
 
+    public static string ChangeEmail(EmailOptions options, Guid userId, string email, string token) =>
+        $"{Root(options)}/#/eposta-degistir?userId={userId}&email={Uri.EscapeDataString(email)}&token={Uri.EscapeDataString(token)}";
+
     public static string ForgotPassword(EmailOptions options) =>
         $"{Root(options)}/#/sifre-sifirla";
 

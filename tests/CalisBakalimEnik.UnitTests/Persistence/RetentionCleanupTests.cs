@@ -100,6 +100,7 @@ public class RetentionCleanupTests
         {
             SecurityEventDays = 0,
             ErasedSecurityEventDays = 0,
+            PersonalDetailHistoryDays = 0,
             RefreshTokenDays = 0,
             ProcessedOutboxDays = 0,
         };

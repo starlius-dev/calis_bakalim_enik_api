@@ -54,6 +54,13 @@ public sealed class RetentionOptions
     public int ErasedSecurityEventDays { get; set; } = 183;
 
     /// <summary>
+    /// Previous names and e-mail addresses (J78), counted from the change:
+    /// twelve months, decided 30 Sep 2026 and to be stated in the privacy
+    /// text. Long enough to undo an account takeover noticed late.
+    /// </summary>
+    public int PersonalDetailHistoryDays { get; set; } = 365;
+
+    /// <summary>
     /// Dead refresh tokens, counted from the later of expiry and revocation.
     /// </summary>
     /// <remarks>
