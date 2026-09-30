@@ -78,7 +78,7 @@ public static class NotificationEndpoints
     /// and onto the unread badge. The list, the badge and mark-all-read all use
     /// this, so the three can never disagree about what is in the inbox.
     /// </remarks>
-    private static IQueryable<Notification> Due(
+    internal static IQueryable<Notification> Due(
         AppDbContext db, Guid userId, DateTimeOffset now) =>
         db.Notifications.Where(n =>
             n.UserId == userId && (n.ScheduledAt == null || n.ScheduledAt <= now));

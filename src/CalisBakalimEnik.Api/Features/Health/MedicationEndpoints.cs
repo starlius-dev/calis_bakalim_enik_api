@@ -271,6 +271,10 @@ public static class MedicationEndpoints
 
     // ── doses ────────────────────────────────────────────────────────────
 
+    /// <summary>The days a dose list covers: the ones asked for, else today.</summary>
+    public static (DateOnly First, DateOnly Last) DoseRange(
+        DateOnly today, DateOnly? from, DateOnly? to) => (from ?? today, to ?? today);
+
     private static async Task<IResult> ListDosesAsync(
         AppDbContext db,
         IClock clock,
@@ -302,8 +306,12 @@ public static class MedicationEndpoints
         // The default window is deliberately wider than a day: a dose at 23:00
         // ticked off after midnight has to still be on the screen it was ticked
         // off from.
-        var first = from ?? today.AddDays(-1);
-        var last = to ?? today.AddDays(1);
+        // Today only, unless a range is asked for (J68). The default used to
+        // be yesterday through tomorrow, and the "today" list drew all three
+        // days as one. Besides the clutter, tapping TOMORROW's 22:30 dose at
+        // 22:32 tonight was then correctly refused as a day early, which read
+        // as the app not knowing the time (J69).
+        var (first, last) = DoseRange(today, from, to);
 
         if (last < first)
             return Results.ValidationProblem(new Dictionary<string, string[]>

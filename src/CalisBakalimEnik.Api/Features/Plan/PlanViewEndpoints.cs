@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using CalisBakalimEnik.Api.Features.Auth;
+using CalisBakalimEnik.Api.Features.Notifications;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Notifications;
@@ -105,8 +106,13 @@ public static partial class PlanEndpointsViews
         var overdue = await db.Tasks.CountAsync(
             t => t.CompletedAt == null && t.DueAt != null && t.DueAt < startOfToday, ct);
 
-        var unread = await db.Notifications.CountAsync(
-            n => n.UserId == userId && n.ReadAt == null, ct);
+        // The same "has arrived" rule the inbox uses, not every unread row
+        // (J64). Reminders are written ahead with a future ScheduledAt; counting
+        // them put two weeks of doses that had not happened yet on the home
+        // badge, while the inbox it opens showed almost nothing.
+        var unread = await NotificationEndpoints
+            .Due(db, userId.Value, now)
+            .CountAsync(n => n.ReadAt == null, ct);
 
         // A session started and never ended — the timer the user left running.
         var active = await db.FocusSessions
