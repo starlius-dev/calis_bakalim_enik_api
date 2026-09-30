@@ -86,7 +86,7 @@ public class Note : OwnedEntity
 
     public string? Title { get; set; }
 
-    /// <summary>Markdown. Rendered by the client, stored raw.</summary>
+    /// <summary>Plain text, stored and shown as typed. Not Markdown (J74).</summary>
     public string Body { get; set; } = string.Empty;
 
     public bool Pinned { get; set; }

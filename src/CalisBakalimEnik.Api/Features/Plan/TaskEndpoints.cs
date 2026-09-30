@@ -3,6 +3,7 @@ using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Plan;
+using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using CalisBakalimEnik.Infrastructure.Plan;
@@ -141,10 +142,23 @@ public static class TaskEndpoints
                     query = query.Where(t => t.CompletedAt != null);
                     break;
 
+                // What the GECİKMİŞ counter on the home page counts (J72):
+                // open, and due before today began in the user's zone.
+                case "overdue":
+                    // The same helper the dashboard counts with, so the number
+                    // on the card and the list it opens agree. It returns UTC;
+                    // a +03:00 offset here would make Npgsql throw.
+                    var startOfDay = UserDate.StartOfLocalDay(
+                        UserDate.Today(clock.UtcNow, zone), zone);
+                    query = query.Where(t => t.CompletedAt == null
+                                             && t.DueAt != null
+                                             && t.DueAt < startOfDay);
+                    break;
+
                 default:
                     return Results.ValidationProblem(new Dictionary<string, string[]>
                     {
-                        ["scope"] = ["today, week veya done olmalı."],
+                        ["scope"] = ["today, overdue, week veya done olmalı."],
                     });
             }
         }
