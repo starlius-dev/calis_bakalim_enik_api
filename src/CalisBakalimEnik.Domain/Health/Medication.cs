@@ -91,4 +91,15 @@ public class MedicationDose : OwnedEntity
     public DateTimeOffset ScheduledAt { get; set; }
     public DoseStatus Status { get; set; } = DoseStatus.Pending;
     public DateTimeOffset? TakenAt { get; set; }
+
+    /// <summary>
+    /// When the status last changed, by the user or by the missed sweep. A
+    /// resolved dose stays changeable for four hours from here (J70). Null on
+    /// doses resolved before 30 Sep 2026.
+    /// </summary>
+    public DateTimeOffset? StatusChangedAt { get; set; }
+
+    /// <summary>What the last change replaced, so it can be undone (J70).</summary>
+    public DoseStatus? PreviousStatus { get; set; }
+    public DateTimeOffset? PreviousTakenAt { get; set; }
 }

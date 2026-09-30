@@ -201,15 +201,68 @@ public sealed class MedicationDoseService(
             .ExecuteDeleteAsync(ct);
 
     /// <summary>Anything still pending well past its time was not taken.</summary>
+    /// <remarks>
+    /// Stamps the change like a user's would, so a missed dose can still be
+    /// marked taken for the same four hours as any other change (J70). There
+    /// is nothing to undo to: it was never resolved before.
+    /// </remarks>
     public Task<int> MarkMissedAsync(CancellationToken ct)
     {
-        var cutoff = clock.UtcNow - MissedGrace;
+        var now = clock.UtcNow;
+        var cutoff = now - MissedGrace;
 
         return db.MedicationDoses
             .IgnoreQueryFilters()
             .Where(d => d.Status == DoseStatus.Pending && d.ScheduledAt < cutoff)
             .ExecuteUpdateAsync(
-                s => s.SetProperty(d => d.Status, DoseStatus.Missed), ct);
+                s => s
+                    .SetProperty(d => d.Status, DoseStatus.Missed)
+                    .SetProperty(d => d.StatusChangedAt, now)
+                    .SetProperty(d => d.PreviousStatus, (DoseStatus?)null)
+                    .SetProperty(d => d.PreviousTakenAt, (DateTimeOffset?)null),
+                ct);
+    }
+
+    /// <summary>
+    /// Puts back a dose's reminders when it returns to pending before its time
+    /// (J70: taken early, then "Geri al"). Only the ones still ahead of now.
+    /// Does NOT save.
+    /// </summary>
+    public async Task RequeueRemindersAsync(MedicationDose dose, CancellationToken ct)
+    {
+        var now = clock.UtcNow;
+        var queued = await db.Notifications
+            .AnyAsync(n => n.EntityType == DoseEntity
+                           && n.EntityId == dose.Id
+                           && n.QueuedAt == null
+                           && n.SentAt == null, ct);
+        if (queued) return;
+
+        if (dose.ScheduledAt > now)
+        {
+            notifications.Queue(
+                dose.OwnerId,
+                NotificationType.MedicationDue,
+                "İlaç zamanı",
+                "Dozunu almayı unutma.",
+                route: $"/ilaclar/{dose.MedicationId}",
+                entityType: DoseEntity,
+                entityId: dose.Id,
+                scheduledAt: dose.ScheduledAt);
+        }
+
+        if (dose.ScheduledAt + FollowUpAfter > now)
+        {
+            notifications.Queue(
+                dose.OwnerId,
+                NotificationType.MedicationDue,
+                "Dozunu işaretlemedin",
+                "Aldıysan ya da atladıysan uygulamada işaretle.",
+                route: $"/ilaclar/{dose.MedicationId}",
+                entityType: DoseEntity,
+                entityId: dose.Id,
+                scheduledAt: dose.ScheduledAt + FollowUpAfter);
+        }
     }
 
     public async Task<TimeZoneInfo> ZoneOfAsync(Guid ownerId, CancellationToken ct)

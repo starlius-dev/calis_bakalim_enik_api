@@ -49,7 +49,14 @@ public sealed record DoseResponse(
     string Dose,
     DateTimeOffset ScheduledAt,
     string Status,
-    DateTimeOffset? TakenAt);
+    DateTimeOffset? TakenAt,
+    // J70: until when a resolved dose can still be changed (null while
+    // pending), and whether its last change can be undone.
+    DateTimeOffset? EditableUntil,
+    bool CanUndo,
+    // True for a dose from the day before that the default list carries past
+    // midnight because it is still open; the row marks it "Dün".
+    bool CarriedOver = false);
 
 /// <summary>
 /// İlaçlar (17, 18, 20) and the doses behind them.
@@ -82,6 +89,8 @@ public static class MedicationEndpoints
         doses.MapGet("/", ListDosesAsync);
         doses.MapPost("/{id:guid}/take", TakeAsync);
         doses.MapPost("/{id:guid}/skip", SkipAsync);
+        doses.MapPost("/{id:guid}/reset", ResetAsync);
+        doses.MapPost("/{id:guid}/undo", UndoAsync);
 
         return app;
     }
@@ -322,59 +331,92 @@ public static class MedicationEndpoints
         var start = UserDate.StartOfLocalDay(first, zone);
         var end = UserDate.EndOfLocalDay(last, zone);
 
-        var doses = await db.MedicationDoses
+        var now = clock.UtcNow;
+        var openSince = now - DoseRules.EditWindow;
+
+        // With no range asked for, the day before also contributes the doses
+        // that are still open (J70): pending, or changed within the last four
+        // hours. A dose ticked at 23:00 has to stay on the screen, and
+        // changeable, until 03:00 rather than vanish at midnight.
+        var carryFrom = from is null && to is null
+            ? UserDate.StartOfLocalDay(first.AddDays(-1), zone)
+            : start;
+
+        var rows = await db.MedicationDoses
             // Half-open: EndOfLocalDay is the NEXT day's midnight, so `<` is
             // what keeps a dose at exactly midnight out of both days at once.
-            .Where(d => d.ScheduledAt >= start && d.ScheduledAt < end)
+            .Where(d => (d.ScheduledAt >= start && d.ScheduledAt < end)
+                        || (d.ScheduledAt >= carryFrom && d.ScheduledAt < start
+                            && (d.Status == DoseStatus.Pending
+                                || d.StatusChangedAt > openSince)))
             .OrderBy(d => d.ScheduledAt)
             .Take(Math.Clamp(take, 1, 500))
-            .Join(
-                db.Medications,
-                d => d.MedicationId,
-                m => m.Id,
-                (d, m) => new DoseResponse(
-                    d.Id, d.MedicationId, m.Name, m.Dose,
-                    d.ScheduledAt, d.Status.ToString(), d.TakenAt))
+            .Join(db.Medications, d => d.MedicationId, m => m.Id, (d, m) => new { d, m.Name, m.Dose })
             .ToListAsync(ct);
 
-        return Results.Ok(doses);
+        return Results.Ok(rows
+            .Select(r => Describe(r.d, r.Name, r.Dose, now) with { CarriedOver = r.d.ScheduledAt < start })
+            .ToList());
     }
+
+    internal static DoseResponse Describe(MedicationDose d, string name, string dose, DateTimeOffset now) =>
+        new(d.Id, d.MedicationId, name, dose, d.ScheduledAt, d.Status.ToString(), d.TakenAt,
+            DoseRules.EditableUntil(d), DoseRules.CanUndo(d, now));
 
     private static Task<IResult> TakeAsync(
         Guid id, AppDbContext db, MedicationDoseService doses, IClock clock,
         ClaimsPrincipal principal, CancellationToken ct) =>
-        SetDoseAsync(id, db, doses, clock, principal, ct, DoseStatus.Taken);
+        ChangeDoseAsync(id, db, doses, clock, principal, ct, DoseStatus.Taken,
+            (d, now) => DoseRules.Set(d, DoseStatus.Taken, now));
 
     private static Task<IResult> SkipAsync(
         Guid id, AppDbContext db, MedicationDoseService doses, IClock clock,
         ClaimsPrincipal principal, CancellationToken ct) =>
-        SetDoseAsync(id, db, doses, clock, principal, ct, DoseStatus.Skipped);
+        ChangeDoseAsync(id, db, doses, clock, principal, ct, DoseStatus.Skipped,
+            (d, now) => DoseRules.Set(d, DoseStatus.Skipped, now));
+
+    /// <summary>"Geri al": back to how it would be had nobody touched it (J70).</summary>
+    private static Task<IResult> ResetAsync(
+        Guid id, AppDbContext db, MedicationDoseService doses, IClock clock,
+        ClaimsPrincipal principal, CancellationToken ct) =>
+        ChangeDoseAsync(id, db, doses, clock, principal, ct, null,
+            (d, now) => DoseRules.Set(d, DoseRules.Untouched(d, now), now));
+
+    /// <summary>The undo toast: puts back what the last change replaced (J70).</summary>
+    private static Task<IResult> UndoAsync(
+        Guid id, AppDbContext db, MedicationDoseService doses, IClock clock,
+        ClaimsPrincipal principal, CancellationToken ct) =>
+        ChangeDoseAsync(id, db, doses, clock, principal, ct, null, DoseRules.Undo, undo: true);
 
     /// <summary>How early a dose may be marked taken, before its scheduled time.</summary>
     internal static readonly TimeSpan EarlyTakeWindow = TimeSpan.FromHours(2);
 
-    private static async Task<IResult> SetDoseAsync(
+    private static async Task<IResult> ChangeDoseAsync(
         Guid id,
         AppDbContext db,
         MedicationDoseService doses,
         IClock clock,
         ClaimsPrincipal principal,
         CancellationToken ct,
-        DoseStatus status)
+        DoseStatus? target,
+        Func<MedicationDose, DateTimeOffset, int> change,
+        bool undo = false)
     {
         if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
 
         var dose = await db.MedicationDoses.FirstOrDefaultAsync(d => d.Id == id, ct);
         if (dose is null) return Results.NotFound();
 
+        var now = clock.UtcNow;
+
         // A dose cannot be marked taken long before it is due. There was no
         // check at all, and a dose scheduled for 08:00 the next morning was
         // recorded as taken four seconds after its medication was created,
         // eighteen hours early: adherence then read 100% for something nobody
         // had taken. Taking one a little early is normal, so there is a window.
-        if (status == DoseStatus.Taken
+        if (target == DoseStatus.Taken
             && dose.Status != DoseStatus.Taken
-            && dose.ScheduledAt > clock.UtcNow + EarlyTakeWindow)
+            && dose.ScheduledAt > now + EarlyTakeWindow)
         {
             return Results.Problem(
                 title: "Bu dozun zamanı henüz gelmedi.",
@@ -383,51 +425,59 @@ public static class MedicationEndpoints
                 statusCode: StatusCodes.Status409Conflict);
         }
 
-        // Setting a dose to the state it is already in changes nothing. Before
-        // this, a second tap on "taken" ran the whole update again and took a
-        // second tablet off the stock count.
-        if (dose.Status != status)
+        // Four hours after its last change a resolved dose is history (J70).
+        if (DoseRules.IsLocked(dose, now))
         {
-            var wasTaken = dose.Status == DoseStatus.Taken;
+            return Results.Problem(
+                title: "Bu doz artık değiştirilemez.",
+                detail: "Bir doz, son değişikliğinden sonra 4 saat boyunca değiştirilebilir.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
 
-            dose.Status = status;
-            dose.TakenAt = status == DoseStatus.Taken ? clock.UtcNow : null;
+        if (undo && !DoseRules.CanUndo(dose, now))
+        {
+            return Results.Problem(
+                title: "Geri alınacak bir değişiklik yok.",
+                statusCode: StatusCodes.Status409Conflict);
+        }
 
-            // Taking a dose consumes stock; skipping does not, because the
-            // tablet is still in the box. So stock moves only on the way into
-            // Taken, and comes back on the way out of it (taken, then skipped).
-            var isTaken = status == DoseStatus.Taken;
-            if (wasTaken != isTaken)
+        var before = dose.Status;
+
+        // Taking a dose consumes stock; skipping does not, because the tablet
+        // is still in the box. The rules say which way the count moves; a
+        // second tap on the state a dose is already in moves nothing.
+        var stockChange = change(dose, now);
+
+        if (dose.Status != before)
+        {
+            if (stockChange != 0)
             {
                 var medication = await db.Medications
                     .FirstOrDefaultAsync(m => m.Id == dose.MedicationId, ct);
 
                 if (medication?.StockCount is { } stock)
-                {
-                    medication.StockCount = isTaken ? Math.Max(0, stock - 1) : stock + 1;
-                }
+                    medication.StockCount = Math.Max(0, stock + stockChange);
             }
+
+            // Back to pending before its time: its reminders come back too.
+            if (dose.Status == DoseStatus.Pending)
+                await doses.RequeueRemindersAsync(dose, ct);
 
             await db.SaveChangesAsync(ct);
 
             // Handled, so its reminder and the follow-up have nothing left to
             // say (J65). Taking a dose a little early used to leave both to
             // arrive anyway.
-            await doses.DropRemindersAsync(dose.Id, ct);
+            if (dose.Status != DoseStatus.Pending)
+                await doses.DropRemindersAsync(dose.Id, ct);
         }
 
-        var described = await db.MedicationDoses
-            .Where(d => d.Id == id)
-            .Join(
-                db.Medications,
-                d => d.MedicationId,
-                m => m.Id,
-                (d, m) => new DoseResponse(
-                    d.Id, d.MedicationId, m.Name, m.Dose,
-                    d.ScheduledAt, d.Status.ToString(), d.TakenAt))
+        var medicationRow = await db.Medications
+            .Where(m => m.Id == dose.MedicationId)
+            .Select(m => new { m.Name, m.Dose })
             .FirstAsync(ct);
 
-        return Results.Ok(described);
+        return Results.Ok(Describe(dose, medicationRow.Name, medicationRow.Dose, now));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

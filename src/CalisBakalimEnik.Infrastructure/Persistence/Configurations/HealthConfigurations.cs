@@ -47,6 +47,7 @@ public sealed class MedicationDoseConfiguration : IEntityTypeConfiguration<Medic
         builder.ToTable("medication_doses");
 
         builder.Property(d => d.Status).HasConversion<short>();
+        builder.Property(d => d.PreviousStatus).HasConversion<short?>();
 
         // What makes the generator idempotent: running it twice cannot create
         // a second dose for the same medication and moment.
