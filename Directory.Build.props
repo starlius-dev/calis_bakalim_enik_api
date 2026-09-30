@@ -15,7 +15,7 @@
     <VersionPrefix>0.1.0</VersionPrefix>
     <!-- Bumped and committed by deploy/publish-api.sh on every qa publish;
          prod ships the number qa tested. Never hand-edited. -->
-    <DefaultBuildNumber>2</DefaultBuildNumber>
+    <DefaultBuildNumber>3</DefaultBuildNumber>
     <BuildNumber Condition="'$(BuildNumber)' == ''">$(DefaultBuildNumber)</BuildNumber>
     <GitSha Condition="'$(GitSha)' == ''">local</GitSha>
     <InformationalVersion>$(VersionPrefix)+$(BuildNumber).$(GitSha)</InformationalVersion>
