@@ -161,11 +161,18 @@ public static partial class PlanEndpointsViews
             .Due(db, userId.Value, now)
             .CountAsync(n => n.ReadAt == null, ct);
 
-        // A session started and never ended — the timer the user left running.
+        // A session started and never ended — the timer the user left running,
+        // closed first if it passed the 24-hour cap (J76).
         var active = await db.FocusSessions
             .Where(s => s.EndedAt == null)
             .OrderByDescending(s => s.StartedAt)
             .FirstOrDefaultAsync(ct);
+
+        if (active is not null && FocusRules.ExpireIfOverCap(active, now))
+        {
+            await db.SaveChangesAsync(ct);
+            active = null;
+        }
 
         return Results.Ok(new DashboardResponse(
             today,
@@ -179,11 +186,7 @@ public static partial class PlanEndpointsViews
             dueToday,
             overdue,
             unread,
-            active is null
-                ? null
-                : new FocusSessionResponse(
-                    active.Id, active.TaskId, active.StartedAt, active.EndedAt,
-                    active.PlannedBlocks, active.DoneBlocks, active.FocusSeconds)));
+            active is null ? null : PlanEndpoints.DescribeFocus(active, now)));
     }
 
     /// <summary>
