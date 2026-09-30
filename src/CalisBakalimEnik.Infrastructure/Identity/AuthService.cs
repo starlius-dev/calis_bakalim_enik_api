@@ -11,7 +11,13 @@ using Microsoft.Extensions.Options;
 
 namespace CalisBakalimEnik.Infrastructure.Identity;
 
-public sealed record AuthContext(string? Ip, string? UserAgent, Guid? DeviceId);
+/// <param name="InstallationId">
+/// A random id the app keeps on each device (X-Installation-Id). What "a new
+/// device" means for the sign-in alert, since the user-agent text changes with
+/// every browser update.
+/// </param>
+public sealed record AuthContext(
+    string? Ip, string? UserAgent, Guid? DeviceId, string? InstallationId = null);
 
 /// <summary>
 /// Issues and rotates the token pair.
@@ -62,17 +68,19 @@ public sealed class AuthService(
     private async Task AlertOnUnknownDeviceAsync(
         AppUser user, AuthContext context, CancellationToken ct)
     {
-        var agent = context.UserAgent;
-        if (string.IsNullOrWhiteSpace(agent)) return;
-
         var history = await db.RefreshTokens
             .Where(t => t.UserId == user.Id)
-            .Select(t => t.UserAgent)
+            .Select(t => new { t.UserAgent, t.InstallationId })
             .Distinct()
             .ToListAsync(ct);
 
-        if (history.Count == 0) return;
-        if (history.Contains(agent)) return;
+        if (!IsUnknownDevice(
+                context.InstallationId,
+                context.UserAgent,
+                history.Select(h => h.InstallationId).OfType<string>().ToHashSet(),
+                history.Select(h => h.UserAgent).OfType<string>().ToHashSet(),
+                firstSignIn: history.Count == 0))
+            return;
 
         notifications.Queue(
             user.Id,
@@ -83,6 +91,35 @@ public sealed class AuthService(
 
         logger.LogInformation(
             "Alerted {UserId} about a sign-in from an unrecognised device", user.Id);
+    }
+
+    /// <summary>
+    /// Whether a sign-in comes from a device this account has not used (J65).
+    /// </summary>
+    /// <remarks>
+    /// <para>By the app's installation id when it sends one. The user-agent
+    /// text alone changes with every browser update, so it raised "Yeni bir
+    /// cihazdan giriş yapıldı" for the laptop the person had used all along.</para>
+    ///
+    /// <para>Falls back to the user agent while the account has no id on record
+    /// at all: sessions from before the id existed must not all look new at
+    /// once the day it ships.</para>
+    /// </remarks>
+    public static bool IsUnknownDevice(
+        string? installationId,
+        string? userAgent,
+        IReadOnlySet<string> knownInstallations,
+        IReadOnlySet<string> knownAgents,
+        bool firstSignIn)
+    {
+        // Nothing suspicious about the very first sign-in of a new account.
+        if (firstSignIn) return false;
+
+        if (installationId is not null && knownInstallations.Count > 0)
+            return !knownInstallations.Contains(installationId);
+
+        if (string.IsNullOrWhiteSpace(userAgent)) return false;
+        return !knownAgents.Contains(userAgent);
     }
 
     /// <summary>
@@ -228,6 +265,7 @@ public sealed class AuthService(
             ExpiresAt = refreshExpires,
             CreatedIp = context.Ip,
             UserAgent = context.UserAgent,
+            InstallationId = context.InstallationId,
         };
 
         db.RefreshTokens.Add(entity);

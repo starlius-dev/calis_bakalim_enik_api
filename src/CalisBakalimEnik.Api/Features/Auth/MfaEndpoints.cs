@@ -415,7 +415,16 @@ public static class MfaEndpoints
         => http.Request.Headers.UserAgent.ToString();
 
     internal static AuthContext ContextFrom(HttpContext http)
-        => new(ClientIp(http), UserAgent(http), DeviceId: null);
+        => new(ClientIp(http), UserAgent(http), DeviceId: null, InstallationId(http));
+
+    /// <summary>
+    /// The app's per-device id, only when it is a well-formed GUID: it is
+    /// stored, and a header is anything a client wants it to be.
+    /// </summary>
+    internal static string? InstallationId(HttpContext http) =>
+        Guid.TryParse(http.Request.Headers["X-Installation-Id"].ToString(), out var id)
+            ? id.ToString("N")
+            : null;
 
     internal static IResult Problem(Error error, int status, HttpContext http)
     {

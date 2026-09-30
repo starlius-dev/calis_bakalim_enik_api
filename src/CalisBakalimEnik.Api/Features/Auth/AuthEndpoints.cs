@@ -585,10 +585,7 @@ public static class AuthEndpoints
         await tokens.DenylistAsync(jti, DateTimeOffset.FromUnixTimeSeconds(exp), ct);
     }
 
-    private static AuthContext ContextFrom(HttpContext http) => new(
-        ClientIp(http),
-        http.Request.Headers.UserAgent.ToString(),
-        DeviceId: null);
+    private static AuthContext ContextFrom(HttpContext http) => MfaEndpoints.ContextFrom(http);
 
     /// <summary>
     /// The vetted client address. See <see cref="ClientAddress"/>.

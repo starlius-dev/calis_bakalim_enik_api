@@ -39,5 +39,8 @@ public class RefreshToken : BaseEntity
     public string? CreatedIp { get; set; }
     public string? UserAgent { get; set; }
 
+    /// <summary>The app's own per-device id (X-Installation-Id), when sent.</summary>
+    public string? InstallationId { get; set; }
+
     public bool IsActive(DateTimeOffset now) => RevokedAt is null && ExpiresAt > now;
 }

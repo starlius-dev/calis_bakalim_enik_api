@@ -341,12 +341,14 @@ public static class MedicationEndpoints
     }
 
     private static Task<IResult> TakeAsync(
-        Guid id, AppDbContext db, IClock clock, ClaimsPrincipal principal, CancellationToken ct) =>
-        SetDoseAsync(id, db, clock, principal, ct, DoseStatus.Taken);
+        Guid id, AppDbContext db, MedicationDoseService doses, IClock clock,
+        ClaimsPrincipal principal, CancellationToken ct) =>
+        SetDoseAsync(id, db, doses, clock, principal, ct, DoseStatus.Taken);
 
     private static Task<IResult> SkipAsync(
-        Guid id, AppDbContext db, IClock clock, ClaimsPrincipal principal, CancellationToken ct) =>
-        SetDoseAsync(id, db, clock, principal, ct, DoseStatus.Skipped);
+        Guid id, AppDbContext db, MedicationDoseService doses, IClock clock,
+        ClaimsPrincipal principal, CancellationToken ct) =>
+        SetDoseAsync(id, db, doses, clock, principal, ct, DoseStatus.Skipped);
 
     /// <summary>How early a dose may be marked taken, before its scheduled time.</summary>
     internal static readonly TimeSpan EarlyTakeWindow = TimeSpan.FromHours(2);
@@ -354,6 +356,7 @@ public static class MedicationEndpoints
     private static async Task<IResult> SetDoseAsync(
         Guid id,
         AppDbContext db,
+        MedicationDoseService doses,
         IClock clock,
         ClaimsPrincipal principal,
         CancellationToken ct,
@@ -406,6 +409,11 @@ public static class MedicationEndpoints
             }
 
             await db.SaveChangesAsync(ct);
+
+            // Handled, so its reminder and the follow-up have nothing left to
+            // say (J65). Taking a dose a little early used to leave both to
+            // arrive anyway.
+            await doses.DropRemindersAsync(dose.Id, ct);
         }
 
         var described = await db.MedicationDoses

@@ -38,6 +38,16 @@ public sealed class MedicationDoseService(
     public static readonly TimeSpan MissedGrace = TimeSpan.FromHours(4);
 
     /// <summary>
+    /// A second nudge for a dose still unmarked this long after its time
+    /// (J65, decided 30 Sep 2026). Dropped, like the first, once the dose is
+    /// taken or skipped.
+    /// </summary>
+    public static readonly TimeSpan FollowUpAfter = TimeSpan.FromMinutes(30);
+
+    /// <summary>The entity type a dose's reminders carry; EntityId is the dose.</summary>
+    public const string DoseEntity = "medication_dose";
+
+    /// <summary>
     /// Fills the horizon for one medication. Does NOT save — the caller owns
     /// the transaction, so the doses and whatever prompted them land together.
     /// </summary>
@@ -103,25 +113,38 @@ public sealed class MedicationDoseService(
                 if (instant < now) continue;
                 if (!seen.Add(instant)) continue;
 
-                db.MedicationDoses.Add(new MedicationDose
+                var dose = new MedicationDose
                 {
                     OwnerId = medication.OwnerId,
                     MedicationId = medication.Id,
                     ScheduledAt = instant,
                     Status = DoseStatus.Pending,
-                });
+                };
+                db.MedicationDoses.Add(dose);
+
+                // Both carry the DOSE id (they used to carry the medication's,
+                // so nothing could tell which dose a reminder was for, or drop
+                // it once that dose was handled). NOT the medication name in
+                // the text: this renders on a lock screen. docs/DATABASE.md §8.3.
+                notifications.Queue(
+                    medication.OwnerId,
+                    NotificationType.MedicationDue,
+                    "İlaç zamanı",
+                    "Dozunu almayı unutma.",
+                    route: $"/ilaclar/{medication.Id}",
+                    entityType: DoseEntity,
+                    entityId: dose.Id,
+                    scheduledAt: instant);
 
                 notifications.Queue(
                     medication.OwnerId,
                     NotificationType.MedicationDue,
-                    // NOT the medication name: this renders on a lock screen.
-                    // docs/DATABASE.md §8.3.
-                    "İlaç zamanı",
-                    "Dozunu almayı unutma.",
+                    "Dozunu işaretlemedin",
+                    "Aldıysan ya da atladıysan uygulamada işaretle.",
                     route: $"/ilaclar/{medication.Id}",
-                    entityType: "medication_dose",
-                    entityId: medication.Id,
-                    scheduledAt: instant);
+                    entityType: DoseEntity,
+                    entityId: dose.Id,
+                    scheduledAt: instant + FollowUpAfter);
 
                 created++;
             }
@@ -135,11 +158,46 @@ public sealed class MedicationDoseService(
     /// where the doses on the books no longer reflect what the user takes.
     /// History (taken, missed, skipped) is never touched.
     /// </summary>
-    public Task<int> ClearFutureAsync(Guid medicationId, CancellationToken ct) =>
-        db.MedicationDoses
+    /// <remarks>
+    /// Their reminders go with them. They used to stay behind, so pausing a
+    /// medication still sent two weeks of "İlaç zamanı" for doses that no
+    /// longer existed.
+    /// </remarks>
+    public async Task<int> ClearFutureAsync(Guid medicationId, CancellationToken ct)
+    {
+        var now = clock.UtcNow;
+        var doses = await db.MedicationDoses
             .Where(d => d.MedicationId == medicationId
                         && d.Status == DoseStatus.Pending
-                        && d.ScheduledAt > clock.UtcNow)
+                        && d.ScheduledAt > now)
+            .Select(d => d.Id)
+            .ToListAsync(ct);
+
+        await db.Notifications
+            .Where(n => n.EntityType == DoseEntity
+                        && n.QueuedAt == null
+                        && n.SentAt == null
+                        // Reminders written before 30 Sep 2026 carry the
+                        // medication's id instead of the dose's.
+                        && (doses.Contains(n.EntityId!.Value)
+                            || (n.EntityId == medicationId && n.ScheduledAt > now)))
+            .ExecuteDeleteAsync(ct);
+
+        return await db.MedicationDoses
+            .Where(d => doses.Contains(d.Id))
+            .ExecuteDeleteAsync(ct);
+    }
+
+    /// <summary>
+    /// Drops a dose's reminders that have not gone out yet, once it is taken
+    /// or skipped (J65): a reminder for a dose already handled is noise.
+    /// </summary>
+    public Task<int> DropRemindersAsync(Guid doseId, CancellationToken ct) =>
+        db.Notifications
+            .Where(n => n.EntityType == DoseEntity
+                        && n.EntityId == doseId
+                        && n.QueuedAt == null
+                        && n.SentAt == null)
             .ExecuteDeleteAsync(ct);
 
     /// <summary>Anything still pending well past its time was not taken.</summary>
