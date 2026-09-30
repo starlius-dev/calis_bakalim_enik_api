@@ -51,6 +51,28 @@ public sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>
     }
 }
 
+public sealed class ProjectChangeConfiguration : IEntityTypeConfiguration<ProjectChange>
+{
+    public void Configure(EntityTypeBuilder<ProjectChange> builder)
+    {
+        builder.ToTable("project_changes");
+
+        builder.Property(c => c.Field).HasMaxLength(40).IsRequired();
+        builder.Property(c => c.OldValue).HasMaxLength(4000);
+        builder.Property(c => c.NewValue).HasMaxLength(4000);
+
+        builder.HasIndex(c => new { c.OwnerId, c.ProjectId, c.ChangedAt })
+            .HasDatabaseName("ix_project_changes_project");
+
+        // The history goes with its project. Projects are soft-deleted, so in
+        // practice this only runs when an account is erased.
+        builder.HasOne<Project>()
+            .WithMany()
+            .HasForeignKey(c => c.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 public sealed class EventConfiguration : IEntityTypeConfiguration<Event>
 {
     public void Configure(EntityTypeBuilder<Event> builder)

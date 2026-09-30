@@ -42,8 +42,16 @@ public class Project : OwnedEntity
     public string? Description { get; set; }
     public ProjectStatus Status { get; set; } = ProjectStatus.NotStarted;
 
+    /// <summary>
+    /// Set the first time the project leaves Başlanmadı; editable (J83).
+    /// </summary>
     public DateOnly? StartsOn { get; set; }
     public DateOnly? DueOn { get; set; }
+
+    /// <summary>
+    /// Set when it is marked Bitti, cleared if reopened; editable (J83).
+    /// </summary>
+    public DateOnly? FinishedOn { get; set; }
 
     /// <summary>
     /// Stored, never derived from child tasks.
@@ -54,6 +62,24 @@ public class Project : OwnedEntity
     /// See docs/DATABASE.md §8.2.
     /// </remarks>
     public short ProgressPct { get; set; }
+}
+
+/// <summary>
+/// One field of a project changing, for the project's history (J83: every
+/// change is recorded, decided 30 Sep 2026). Values are stored as text as they
+/// were shown, so the history reads the same after the fields evolve.
+/// </summary>
+public class ProjectChange : OwnedEntity
+{
+    public Guid ProjectId { get; set; }
+    public DateTimeOffset ChangedAt { get; set; }
+
+    /// <summary>created, deleted, name, description, status, progress,
+    /// startsOn, finishedOn, dueOn or course.</summary>
+    public string Field { get; set; } = string.Empty;
+
+    public string? OldValue { get; set; }
+    public string? NewValue { get; set; }
 }
 
 public enum EventType : short

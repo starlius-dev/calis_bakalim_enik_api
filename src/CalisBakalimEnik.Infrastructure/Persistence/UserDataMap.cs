@@ -73,6 +73,7 @@ public static class UserDataMap
         new("tasks", "plan", Owner, None),
         new("notes", "plan", Owner, None),
         new("events", "plan", Owner, None),
+        new("project_changes", "plan", Owner, None),
         new("projects", "plan", Owner, None),
         new("courses", "plan", Owner, None),
         new("terms", "plan", Owner, None),

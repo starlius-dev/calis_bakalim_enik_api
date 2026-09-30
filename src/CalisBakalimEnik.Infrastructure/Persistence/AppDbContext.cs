@@ -43,6 +43,7 @@ public sealed class AppDbContext(
 
     public DbSet<Course> Courses => Set<Course>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectChange> ProjectChanges => Set<ProjectChange>();
     public DbSet<Event> Events => Set<Event>();
     public DbSet<Note> Notes => Set<Note>();
 
