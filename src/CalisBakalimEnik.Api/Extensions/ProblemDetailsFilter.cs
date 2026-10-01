@@ -1,6 +1,7 @@
 using CalisBakalimEnik.Api.Middleware;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Extensions;
 
@@ -90,7 +91,7 @@ public sealed class ProblemDetailsFilter : IEndpointFilter
         return Results.Problem(problem);
     }
 
-    private static string TitleFor(int status) => status switch
+    private static string TitleFor(int status) => T(status switch
     {
         StatusCodes.Status400BadRequest => "Geçersiz istek",
         StatusCodes.Status401Unauthorized => "Yetkisiz",
@@ -99,7 +100,7 @@ public sealed class ProblemDetailsFilter : IEndpointFilter
         StatusCodes.Status409Conflict => "Çakışma",
         StatusCodes.Status429TooManyRequests => "Çok fazla istek",
         _ => "İstek reddedildi",
-    };
+    });
 
     private static void Complete(ProblemDetails problem, HttpContext http)
     {
@@ -115,10 +116,38 @@ public sealed class ProblemDetailsFilter : IEndpointFilter
 
         problem.Instance ??= http.Request.Path;
 
+        Translate(problem);
+
         if (!problem.Extensions.ContainsKey("correlationId"))
         {
             problem.Extensions["correlationId"] =
                 http.Items[CorrelationIdMiddleware.HeaderName] as string;
+        }
+    }
+
+    /// <summary>
+    /// Puts an endpoint's Turkish into the request's language (J80): the
+    /// title, the detail and every validation message. Endpoints keep writing
+    /// the Turkish sentence next to the rule it enforces; the table in
+    /// Application/Common/Localization does the rest. A sentence with no
+    /// entry is left as written.
+    /// </summary>
+    private static void Translate(ProblemDetails problem)
+    {
+        var lang = Current;
+        if (lang == Source) return;
+
+        if (TryTranslate(problem.Title, lang, out var title)) problem.Title = title;
+        if (TryTranslate(problem.Detail, lang, out var detail)) problem.Detail = detail;
+
+        if (problem is HttpValidationProblemDetails validation)
+        {
+            foreach (var (field, messages) in validation.Errors)
+            {
+                validation.Errors[field] = messages
+                    .Select(m => TryTranslate(m, lang, out var t) ? t : m)
+                    .ToArray();
+            }
         }
     }
 

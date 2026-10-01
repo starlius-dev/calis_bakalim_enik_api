@@ -251,8 +251,9 @@ public static class AccountDataEndpoints
                 user.Id, MfaEndpoints.ClientIp(http), MfaEndpoints.UserAgent(http),
                 new { scheduledFor = user.DeletionScheduledAt }, ct);
 
-            await SendQuietlyAsync(email, loggers, user.Email, "Hesabın silinecek",
-                AccountEmails.Requested(user.DisplayName, Local(user.DeletionScheduledAt.Value, user.TimeZone)), ct);
+            await SendQuietlyAsync(email, loggers, user.Email,
+                AccountEmails.Requested(user.Locale, user.DisplayName,
+                    Local(user.DeletionScheduledAt.Value, user.TimeZone)), ct);
         }
 
         return Results.Ok(new DeletionScheduledResponse(user.DeletionScheduledAt.Value));
@@ -287,8 +288,8 @@ public static class AccountDataEndpoints
         await events.WriteAsync(SecurityEventType.AccountDeletionCancelled, succeeded: true,
             user.Id, MfaEndpoints.ClientIp(http), MfaEndpoints.UserAgent(http), null, ct);
 
-        await SendQuietlyAsync(email, loggers, user.Email, "Hesap silme iptal edildi",
-            AccountEmails.Cancelled(user.DisplayName), ct);
+        await SendQuietlyAsync(email, loggers, user.Email,
+            AccountEmails.Cancelled(user.Locale, user.DisplayName), ct);
 
         return Results.NoContent();
     }
@@ -330,14 +331,15 @@ public static class AccountDataEndpoints
 
     /// <summary>A failed mail must not undo or fail the request itself.</summary>
     private static async Task SendQuietlyAsync(
-        IEmailSender email, ILoggerFactory loggers, string? to, string subject, string body,
+        IEmailSender email, ILoggerFactory loggers, string? to, MailText mail,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(to)) return;
+        var subject = mail.Subject;
 
         try
         {
-            await email.SendAsync(to, subject, body, ct);
+            await email.SendAsync(to, mail.Subject, mail.Body, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

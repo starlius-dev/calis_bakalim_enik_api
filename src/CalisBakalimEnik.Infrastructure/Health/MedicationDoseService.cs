@@ -4,6 +4,7 @@ using CalisBakalimEnik.Domain.Notifications;
 using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using CalisBakalimEnik.Application.Common.Localization;
 
 namespace CalisBakalimEnik.Infrastructure.Health;
 
@@ -95,6 +96,7 @@ public sealed class MedicationDoseService(
 
         var seen = existing.ToHashSet();
         var created = 0;
+        var language = await LanguageOfAsync(medication.OwnerId, ct);
 
         for (var offset = 0; offset <= HorizonDays; offset++)
         {
@@ -129,8 +131,8 @@ public sealed class MedicationDoseService(
                 notifications.Queue(
                     medication.OwnerId,
                     NotificationType.MedicationDue,
-                    "İlaç zamanı",
-                    "Dozunu almayı unutma.",
+                    Texts.In(language, "İlaç zamanı"),
+                    Texts.In(language, "Dozunu almayı unutma."),
                     route: $"/ilaclar/{medication.Id}",
                     entityType: DoseEntity,
                     entityId: dose.Id,
@@ -139,8 +141,8 @@ public sealed class MedicationDoseService(
                 notifications.Queue(
                     medication.OwnerId,
                     NotificationType.MedicationDue,
-                    "Dozunu işaretlemedin",
-                    "Aldıysan ya da atladıysan uygulamada işaretle.",
+                    Texts.In(language, "Dozunu işaretlemedin"),
+                    Texts.In(language, "Aldıysan ya da atladıysan uygulamada işaretle."),
                     route: $"/ilaclar/{medication.Id}",
                     entityType: DoseEntity,
                     entityId: dose.Id,
@@ -238,13 +240,15 @@ public sealed class MedicationDoseService(
                            && n.SentAt == null, ct);
         if (queued) return;
 
+        var language = await LanguageOfAsync(dose.OwnerId, ct);
+
         if (dose.ScheduledAt > now)
         {
             notifications.Queue(
                 dose.OwnerId,
                 NotificationType.MedicationDue,
-                "İlaç zamanı",
-                "Dozunu almayı unutma.",
+                Texts.In(language, "İlaç zamanı"),
+                Texts.In(language, "Dozunu almayı unutma."),
                 route: $"/ilaclar/{dose.MedicationId}",
                 entityType: DoseEntity,
                 entityId: dose.Id,
@@ -256,14 +260,23 @@ public sealed class MedicationDoseService(
             notifications.Queue(
                 dose.OwnerId,
                 NotificationType.MedicationDue,
-                "Dozunu işaretlemedin",
-                "Aldıysan ya da atladıysan uygulamada işaretle.",
+                Texts.In(language, "Dozunu işaretlemedin"),
+                Texts.In(language, "Aldıysan ya da atladıysan uygulamada işaretle."),
                 route: $"/ilaclar/{dose.MedicationId}",
                 entityType: DoseEntity,
                 entityId: dose.Id,
                 scheduledAt: dose.ScheduledAt + FollowUpAfter);
         }
     }
+
+    /// <summary>The language the owner reads in (J80): reminders are written
+    /// in it when they are queued.</summary>
+    public async Task<string> LanguageOfAsync(Guid ownerId, CancellationToken ct) =>
+        Texts.Language(await db.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.Id == ownerId)
+            .Select(u => u.Locale)
+            .FirstOrDefaultAsync(ct));
 
     public async Task<TimeZoneInfo> ZoneOfAsync(Guid ownerId, CancellationToken ct)
     {

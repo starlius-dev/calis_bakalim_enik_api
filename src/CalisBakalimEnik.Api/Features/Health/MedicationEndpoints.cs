@@ -420,8 +420,7 @@ public static class MedicationEndpoints
         {
             return Results.Problem(
                 title: "Bu dozun zamanı henüz gelmedi.",
-                detail: "Bir doz en erken planlanan saatinden 2 saat önce "
-                        + "alındı olarak işaretlenebilir.",
+                detail: "Bir doz en erken planlanan saatinden 2 saat önce alındı olarak işaretlenebilir.",
                 statusCode: StatusCodes.Status409Conflict);
         }
 

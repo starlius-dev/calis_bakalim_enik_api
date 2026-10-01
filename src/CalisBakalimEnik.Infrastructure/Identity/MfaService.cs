@@ -320,14 +320,18 @@ public sealed class MfaService(
     {
         if (string.IsNullOrWhiteSpace(factor.Destination)) return;
 
-        var body = $"Çalış Bakalım Enik doğrulama kodun: {code}\n" +
-                   $"Kod {MfaChallengeStore.Lifetime.TotalMinutes:0} dakika geçerli.";
+        var language = await db.Users
+            .Where(u => u.Id == factor.UserId)
+            .Select(u => u.Locale)
+            .FirstOrDefaultAsync(ct);
+        var mail = AuthEmails.SignInCode(
+            language ?? "tr", code, (int)MfaChallengeStore.Lifetime.TotalMinutes);
 
         // Email is the only delivered factor. SMS was removed: it is the weakest
         // second factor (SIM-swap prone), it costs money per send, and TOTP plus
         // recovery codes already cover the same ground better.
         if (factor.FactorType == MfaFactorType.EmailOtp)
-            await email.SendAsync(factor.Destination, "Doğrulama kodun", body, ct);
+            await email.SendAsync(factor.Destination, mail.Subject, mail.Body, ct);
     }
 
     private async Task SoftDeleteExistingAsync(

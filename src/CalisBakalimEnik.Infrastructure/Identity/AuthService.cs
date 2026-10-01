@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using CalisBakalimEnik.Application.Common.Localization;
 
 namespace CalisBakalimEnik.Infrastructure.Identity;
 
@@ -85,8 +86,8 @@ public sealed class AuthService(
         notifications.Queue(
             user.Id,
             NotificationType.SecurityAlert,
-            "Yeni bir cihazdan giriş yapıldı",
-            "Bu sen değilsen şifreni değiştir ve tüm oturumları kapat.",
+            Texts.In(user.Locale, "Yeni bir cihazdan giriş yapıldı"),
+            Texts.In(user.Locale, "Bu sen değilsen şifreni değiştir ve tüm oturumları kapat."),
             route: "/hesap");
 
         logger.LogInformation(

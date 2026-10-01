@@ -58,17 +58,23 @@ public class PersonalDetailsTests
         table.Scope.Should().Be("user_id = @uid");
     }
 
-    [Fact]
-    public void The_mails_carry_no_dash_characters()
+    [Theory]
+    [InlineData("tr")]
+    [InlineData("en")]
+    public void The_mails_carry_no_dash_characters(string language)
     {
         var mails = new[]
         {
-            PersonalDetailEmails.Confirm("Zeynep", "https://x/#/eposta-degistir"),
-            PersonalDetailEmails.AlreadyUsed(),
-            PersonalDetailEmails.Requested("Zeynep", "yeni@ornek.com"),
-            PersonalDetailEmails.Changed("Zeynep", "yeni@ornek.com"),
+            PersonalDetailEmails.Confirm(language, "Zeynep", "https://x/#/eposta-degistir"),
+            PersonalDetailEmails.AlreadyUsed(language),
+            PersonalDetailEmails.Requested(language, "Zeynep", "yeni@ornek.com"),
+            PersonalDetailEmails.Changed(language, "Zeynep", "yeni@ornek.com"),
         };
 
-        mails.Should().AllSatisfy(m => m.Should().NotContainAny("—", "–"));
+        mails.Should().AllSatisfy(m =>
+        {
+            m.Subject.Should().NotContainAny("—", "–");
+            m.Body.Should().NotContainAny("—", "–");
+        });
     }
 }

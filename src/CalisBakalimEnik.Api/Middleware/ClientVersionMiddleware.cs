@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CalisBakalimEnik.Api.Extensions;
 using Microsoft.Extensions.Options;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Middleware;
 
@@ -82,9 +83,9 @@ public sealed class ClientVersionMiddleware(RequestDelegate next, IOptions<Clien
         await context.Response.WriteAsync(JsonSerializer.Serialize(new Dictionary<string, object?>
         {
             ["type"] = ProblemTypes.ClientTooOld,
-            ["title"] = "Güncelleme gerekli",
+            ["title"] = T("Güncelleme gerekli"),
             ["status"] = StatusCodes.Status426UpgradeRequired,
-            ["detail"] = "Bu sürüm artık desteklenmiyor. Uygulamayı güncelle.",
+            ["detail"] = T("Bu sürüm artık desteklenmiyor. Uygulamayı güncelle."),
             ["instance"] = context.Request.Path.Value,
             ["correlationId"] = correlationId,
             ["minimumVersion"] = _minimum.ToString(3),

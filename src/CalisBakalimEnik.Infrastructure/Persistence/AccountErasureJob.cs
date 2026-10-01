@@ -72,7 +72,7 @@ public sealed class AccountErasureJob(
         var due = await db.Users
             .IgnoreQueryFilters()
             .Where(u => u.DeletionScheduledAt != null && u.DeletionScheduledAt <= now)
-            .Select(u => new { u.Id, u.Email, u.DisplayName })
+            .Select(u => new { u.Id, u.Email, u.DisplayName, u.Locale })
             .ToListAsync(ct);
 
         foreach (var user in due)
@@ -97,7 +97,8 @@ public sealed class AccountErasureJob(
 
             try
             {
-                await email.SendAsync(user.Email, "Hesabın silindi", AccountEmails.Erased(user.DisplayName), ct);
+                var mail = AccountEmails.Erased(user.Locale, user.DisplayName);
+                await email.SendAsync(user.Email, mail.Subject, mail.Body, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

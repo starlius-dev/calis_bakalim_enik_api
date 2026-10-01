@@ -7,6 +7,7 @@ using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Features.Auth;
 
@@ -274,7 +275,7 @@ public static class MfaEndpoints
             new { factor = "RecoveryCode", count = codes.Count, stage = "auto" }, ct);
 
         return Results.Ok(new TotpConfirmedResponse(
-            codes, "Bu kodlar bir daha gösterilmeyecek."));
+            codes, T("Bu kodlar bir daha gösterilmeyecek.")));
     }
 
     private static async Task<IResult> EnrolOtpAsync(
@@ -350,7 +351,7 @@ public static class MfaEndpoints
             user.Id, ClientIp(http), UserAgent(http),
             new { factor = "RecoveryCode", count = codes.Count }, ct);
 
-        return Results.Ok(new { codes, warning = "Bu kodlar bir daha gösterilmeyecek." });
+        return Results.Ok(new { codes, warning = T("Bu kodlar bir daha gösterilmeyecek.") });
     }
 
     private static async Task<IResult> RemoveFactorAsync(

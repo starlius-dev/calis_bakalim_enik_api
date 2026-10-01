@@ -1,8 +1,10 @@
+using System.Globalization;
 using CalisBakalimEnik.Domain.Notifications;
 using CalisBakalimEnik.Domain.Plan;
 using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using CalisBakalimEnik.Application.Common.Localization;
 
 namespace CalisBakalimEnik.Infrastructure.Plan;
 
@@ -33,14 +35,14 @@ public sealed class TaskReminders(AppDbContext db, NotificationService notificat
 
         var user = await db.Users
             .Where(u => u.Id == task.OwnerId)
-            .Select(u => new { u.TimeZone })
+            .Select(u => new { u.TimeZone, u.Locale })
             .FirstOrDefaultAsync(ct);
 
         notifications.Queue(
             task.OwnerId,
             NotificationType.TaskDue,
             task.Title,
-            BodyFor(task, QuietHours.Resolve(user?.TimeZone)),
+            BodyFor(task, QuietHours.Resolve(user?.TimeZone), Texts.Language(user?.Locale)),
             route: $"/gorevler/{task.Id}",
             entityType: EntityType,
             entityId: task.Id,
@@ -74,9 +76,9 @@ public sealed class TaskReminders(AppDbContext db, NotificationService notificat
     /// Istanbul is three hours wrong, which for a "due at 09:55" reminder is the
     /// difference between useful and actively misleading.
     /// </remarks>
-    private static string BodyFor(TaskItem task, TimeZoneInfo zone)
+    private static string BodyFor(TaskItem task, TimeZoneInfo zone, string language)
     {
-        if (task.DueAt is null) return "Hatırlatma zamanı geldi.";
+        if (task.DueAt is null) return Texts.In(language, "Hatırlatma zamanı geldi.");
 
         var due = TimeZoneInfo.ConvertTime(task.DueAt.Value, zone);
         var reminder = TimeZoneInfo.ConvertTime(task.ReminderAt!.Value, zone);
@@ -84,10 +86,12 @@ public sealed class TaskReminders(AppDbContext db, NotificationService notificat
         var sameDay = due.Date == reminder.Date;
         var tomorrow = due.Date == reminder.Date.AddDays(1);
 
+        var clock = due.ToString("HH:mm", CultureInfo.InvariantCulture);
         return sameDay
-            ? $"Bugün {due:HH:mm}'de teslim."
+            ? Texts.In(language, "Bugün {0}'de teslim.", clock)
             : tomorrow
-                ? $"Yarın {due:HH:mm}'de teslim."
-                : $"{due:dd.MM.yyyy HH:mm}'de teslim.";
+                ? Texts.In(language, "Yarın {0}'de teslim.", clock)
+                : Texts.In(language, "{0}'de teslim.",
+                    due.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture));
     }
 }

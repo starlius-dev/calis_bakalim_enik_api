@@ -141,24 +141,24 @@ public static class PersonalDetailsEndpoints
         {
             var logger = loggers.CreateLogger("Account.Details");
 
-            if (await users.FindByEmailAsync(newEmail!) is not null)
+            if (await users.FindByEmailAsync(newEmail!) is { } owner)
             {
                 // The app hears the same as for a free address; the new
-                // address is told why nothing happened.
-                await SendQuietlyAsync(email, logger, newEmail, "Çalış Bakalım Enik: e-posta değişikliği",
-                    PersonalDetailEmails.AlreadyUsed(), ct);
+                // address is told why nothing happened, in its owner's language.
+                await SendQuietlyAsync(email, logger, newEmail,
+                    PersonalDetailEmails.AlreadyUsed(owner.Locale), ct);
             }
             else
             {
                 var token = await users.GenerateChangeEmailTokenAsync(user, newEmail!);
                 var link = EmailLinks.ChangeEmail(links.Value, user.Id, newEmail!, token);
 
-                await SendQuietlyAsync(email, logger, newEmail, "E-posta adresini onayla",
-                    PersonalDetailEmails.Confirm(user.DisplayName, link), ct);
+                await SendQuietlyAsync(email, logger, newEmail,
+                    PersonalDetailEmails.Confirm(user.Locale, user.DisplayName, link), ct);
             }
 
-            await SendQuietlyAsync(email, logger, user.Email, "E-posta değişikliği isteği",
-                PersonalDetailEmails.Requested(user.DisplayName, newEmail!), ct);
+            await SendQuietlyAsync(email, logger, user.Email,
+                PersonalDetailEmails.Requested(user.Locale, user.DisplayName, newEmail!), ct);
 
             await events.WriteAsync(SecurityEventType.EmailChangeRequested, succeeded: true,
                 user.Id, ip, agent, null, ct);
@@ -218,7 +218,7 @@ public static class PersonalDetailsEndpoints
             user.Id, MfaEndpoints.ClientIp(http), MfaEndpoints.UserAgent(http), null, ct);
 
         await SendQuietlyAsync(email, loggers.CreateLogger("Account.Details"), oldEmail,
-            "E-posta adresin değişti", PersonalDetailEmails.Changed(user.DisplayName, newEmail), ct);
+            PersonalDetailEmails.Changed(user.Locale, user.DisplayName, newEmail), ct);
 
         return Results.NoContent();
     }
@@ -253,14 +253,15 @@ public static class PersonalDetailsEndpoints
 
     /// <summary>A failed mail must not undo or fail the request itself.</summary>
     private static async Task SendQuietlyAsync(
-        IEmailSender email, ILogger logger, string? to, string subject, string body,
+        IEmailSender email, ILogger logger, string? to, MailText mail,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(to)) return;
+        var subject = mail.Subject;
 
         try
         {
-            await email.SendAsync(to, subject, body, ct);
+            await email.SendAsync(to, mail.Subject, mail.Body, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -1,6 +1,7 @@
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Models;
 using CalisBakalimEnik.Infrastructure.Identity;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Middleware;
 
@@ -24,7 +25,7 @@ public sealed class DeletionPendingMiddleware(RequestDelegate next)
         {
             var result = MfaEndpoints.Problem(
                 new Error("account.deletion_pending",
-                    "Hesabın silinmek üzere. Devam etmek için silmeyi iptal et."),
+                    T("Hesabın silinmek üzere. Devam etmek için silmeyi iptal et.")),
                 StatusCodes.Status409Conflict,
                 context);
 

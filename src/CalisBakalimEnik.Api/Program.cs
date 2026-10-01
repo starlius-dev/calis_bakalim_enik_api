@@ -114,6 +114,7 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 
 // Before authentication: a client that is too old should be told to update,
 // not told its token is bad. Inert until Client:MinimumVersion is set.
+app.UseMiddleware<LanguageMiddleware>();
 app.UseMiddleware<ClientVersionMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseRequestLogging();

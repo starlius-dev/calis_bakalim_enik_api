@@ -8,10 +8,15 @@ using CalisBakalimEnik.Infrastructure.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
+using CalisBakalimEnik.Application.Common.Localization;
 
 namespace CalisBakalimEnik.Api.Features.Auth;
 
-public sealed record RegisterRequest(string Email, string Password, string? DisplayName);
+/// <param name="Locale">The language the sign-up screen was shown in (J80);
+/// the account starts in it. Anything the API does not speak is Turkish.</param>
+public sealed record RegisterRequest(
+    string Email, string Password, string? DisplayName, string? Locale = null);
 public sealed record ConfirmEmailRequest(string UserId, string Token);
 public sealed record LoginRequest(string Email, string Password);
 public sealed record RefreshRequest(string RefreshToken);
@@ -96,16 +101,10 @@ public static class AuthEndpoints
 
         if (existing is not null)
         {
+            var attempt = AuthEmails.RegisterAttempt(
+                existing.Locale, EmailLinks.ForgotPassword(links.Value));
             await SendQuietlyAsync(email, logger, request.Email,
-                "Çalış Bakalım Enik: kayıt denemesi",
-                $"""
-                 Bu adresle zaten bir hesap var, bu yüzden yeni bir hesap açmadık.
-
-                 Şifreni hatırlamıyorsan buradan sıfırlayabilirsin:
-
-                 {EmailLinks.ForgotPassword(links.Value)}
-                 """,
-                ct);
+                attempt.Subject, attempt.Body, ct);
 
             logger.LogInformation("Registration attempted for an existing address");
             return Results.NoContent();
@@ -134,6 +133,7 @@ public static class AuthEndpoints
             UserName = request.Email,
             Email = request.Email,
             DisplayName = displayName,
+            Locale = Texts.Language(request.Locale),
             Status = UserStatus.PendingConfirmation,
             CreatedAt = clock.UtcNow,
         };
@@ -155,18 +155,9 @@ public static class AuthEndpoints
 
         var token = await users.GenerateEmailConfirmationTokenAsync(user);
 
-        await SendQuietlyAsync(email, logger, request.Email,
-            "Çalış Bakalım Enik: e-postanı doğrula",
-            $"""
-             Merhaba {user.DisplayName},
-
-             Hesabını açmak için son bir adım kaldı. Aşağıdaki bağlantıya tıkla:
-
-             {EmailLinks.ConfirmEmail(links.Value, user.Id, token)}
-
-             Bağlantı 24 saat geçerli.
-             """,
-            ct);
+        var confirm = AuthEmails.ConfirmEmail(
+            user.Locale, user.DisplayName, EmailLinks.ConfirmEmail(links.Value, user.Id, token));
+        await SendQuietlyAsync(email, logger, request.Email, confirm.Subject, confirm.Body, ct);
 
         return Results.NoContent();
     }
@@ -382,7 +373,7 @@ public static class AuthEndpoints
         return Problem(
             new Application.Common.Models.Error(
                 "auth.locked",
-                $"Çok fazla deneme. {seconds / 60} dk {seconds % 60} sn sonra tekrar dene."),
+                T("Çok fazla deneme. {0} dk {1} sn sonra tekrar dene.", seconds / 60, seconds % 60)),
             StatusCodes.Status423Locked,
             http);
     }
@@ -500,11 +491,11 @@ public static class AuthEndpoints
 
         if (request.Locale is { } locale)
         {
-            if (locale is not ("tr" or "en"))
+            if (!Texts.Languages.Contains(locale))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["locale"] = ["Desteklenen diller: tr, en."],
+                    ["locale"] = [Texts.T("Desteklenen diller: {0}.", string.Join(", ", Texts.Languages))],
                 });
             }
 

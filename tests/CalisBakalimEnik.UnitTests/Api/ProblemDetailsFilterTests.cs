@@ -1,3 +1,4 @@
+using System.Globalization;
 using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Api.Middleware;
 using FluentAssertions;
@@ -10,9 +11,18 @@ namespace CalisBakalimEnik.UnitTests.Api;
 /// <summary>
 /// The problem documents endpoints return by hand — docs/ARCHITECTURE.md §3.
 /// </summary>
-public class ProblemDetailsFilterTests
+public class ProblemDetailsFilterTests : IDisposable
 {
     private const string CorrelationId = "0193f2b1-dead-beef-cafe-000000000001";
+
+    // LanguageMiddleware sets this on every real request (J80). Pinned here
+    // so the tests do not depend on the machine's own language.
+    private readonly CultureInfo _culture = CultureInfo.CurrentUICulture;
+
+    public ProblemDetailsFilterTests() =>
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("tr");
+
+    public void Dispose() => CultureInfo.CurrentUICulture = _culture;
 
     private static HttpContext Request()
     {
@@ -82,6 +92,23 @@ public class ProblemDetailsFilterTests
 
         problem.Errors.Should().ContainKey("title");
         problem.Errors["title"].Should().Contain("Başlık boş olamaz.");
+    }
+
+    [Fact]
+    public async Task An_English_request_gets_the_title_and_field_errors_in_English()
+    {
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("en");
+        var result = Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["title"] = ["Başlık boş olamaz."],
+        });
+
+        await RunAsync(Request(), result);
+
+        var problem = Details(result).Should()
+            .BeOfType<HttpValidationProblemDetails>().Subject;
+        problem.Title.Should().Be("Invalid request");
+        problem.Errors["title"].Should().Equal("The title cannot be empty.");
     }
 
     [Fact]

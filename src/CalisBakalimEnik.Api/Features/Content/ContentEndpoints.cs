@@ -578,6 +578,7 @@ public static partial class ContentEndpoints
         Event item, Guid ownerId, ReminderSync reminders, CancellationToken ct)
     {
         var zone = await reminders.ZoneOfAsync(ownerId, ct);
+        var language = await reminders.LanguageOfAsync(ownerId, ct);
 
         await reminders.SyncAsync(
             "event",
@@ -586,7 +587,7 @@ public static partial class ContentEndpoints
             NotificationType.EventSoon,
             item.Title,
             ReminderSync.DueBody(
-                item.StartsAt, item.ReminderAt ?? item.StartsAt, zone),
+                item.StartsAt, item.ReminderAt ?? item.StartsAt, zone, language),
             $"/etkinlikler/{item.Id}",
             item.ReminderAt,
             ct);
