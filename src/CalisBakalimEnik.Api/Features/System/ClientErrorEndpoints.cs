@@ -46,7 +46,7 @@ public sealed record ClientErrorDetail(
     string? UserEmail,
     Guid? InstallationId);
 
-public sealed record ClientErrorPage(IReadOnlyList<ClientErrorSummary> Items, long? Next);
+public sealed record ClientErrorPage(IReadOnlyList<ClientErrorSummary> Items, long? NextCursor);
 
 /// <summary>
 /// Uncaught errors in the app, reported by the app itself (D19), and the
