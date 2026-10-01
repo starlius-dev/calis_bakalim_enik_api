@@ -27,7 +27,7 @@ public static class Texts
     public const string Source = "tr";
 
     /// <summary>The languages the API speaks. The profile accepts these.</summary>
-    public static readonly IReadOnlyList<string> Languages = ["tr", "en"];
+    public static readonly IReadOnlyList<string> Languages = ["tr", "en", "de", "ru"];
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Tables =
         Languages.Where(l => l != Source).ToDictionary(l => l, Load);

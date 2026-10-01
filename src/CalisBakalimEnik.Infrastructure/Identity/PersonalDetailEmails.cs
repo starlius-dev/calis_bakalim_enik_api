@@ -31,6 +31,34 @@ public static class PersonalDetailEmails
 
                  Çalış Bakalım Enik
                  """),
+            "de" => new("Bestätige deine E-Mail-Adresse",
+                $"""
+                 Hallo {AccountEmails.Greeting(name, "de")},
+
+                 Du möchtest die E-Mail-Adresse deines Kontos bei Çalış Bakalım Enik in
+                 diese ändern. Öffne den Link, um die Änderung abzuschließen:
+
+                 {link}
+
+                 Der Link gilt 24 Stunden. Wenn du das nicht angefordert hast, kannst du
+                 diese E-Mail ignorieren; die Adresse bleibt, wie sie ist.
+
+                 Çalış Bakalım Enik
+                 """),
+            "ru" => new("Подтверди адрес эл. почты",
+                $"""
+                 Привет, {AccountEmails.Greeting(name, "ru")}!
+
+                 Ты хочешь сменить адрес эл. почты аккаунта Çalış Bakalım Enik на этот.
+                 Открой ссылку, чтобы завершить смену:
+
+                 {link}
+
+                 Ссылка действует 24 часа. Если ты этого не запрашивал(а), просто
+                 проигнорируй письмо; адрес останется прежним.
+
+                 Çalış Bakalım Enik
+                 """),
             _ => new("E-posta adresini onayla",
                 $"""
                  Merhaba {AccountEmails.Greeting(name, "tr")},
@@ -66,6 +94,29 @@ public static class PersonalDetailEmails
 
                  Çalış Bakalım Enik
                  """),
+            "de" => new("Çalış Bakalım Enik: Änderung der E-Mail-Adresse",
+                """
+                 Hallo,
+
+                 Jemand wollte die E-Mail-Adresse eines Kontos bei Çalış Bakalım Enik in
+                 diese ändern, aber mit dieser Adresse gibt es schon ein Konto. Deshalb
+                 wurde nichts geändert.
+
+                 Wenn du das nicht warst, musst du nichts tun.
+
+                 Çalış Bakalım Enik
+                 """),
+            "ru" => new("Çalış Bakalım Enik: смена адреса эл. почты",
+                """
+                 Здравствуй!
+
+                 Кто-то хотел сменить адрес эл. почты аккаунта Çalış Bakalım Enik на
+                 этот, но с этим адресом уже есть аккаунт. Поэтому ничего не изменилось.
+
+                 Если это был(а) не ты, ничего делать не нужно.
+
+                 Çalış Bakalım Enik
+                 """),
             _ => new("Çalış Bakalım Enik: e-posta değişikliği",
                 """
                  Merhaba,
@@ -97,6 +148,31 @@ public static class PersonalDetailEmails
 
                  Çalış Bakalım Enik
                  """),
+            "de" => new("Änderung der E-Mail-Adresse angefordert",
+                $"""
+                 Hallo {AccountEmails.Greeting(name, "de")},
+
+                 Wir haben eine Anfrage erhalten, die E-Mail-Adresse deines Kontos in
+                 {newEmail} zu ändern. Die Adresse ändert sich, sobald der Link geöffnet
+                 wird, den wir an die neue Adresse geschickt haben.
+
+                 Wenn die Anfrage nicht von dir kam, melde dich sofort in der App an
+                 und ändere dein Passwort.
+
+                 Çalış Bakalım Enik
+                 """),
+            "ru" => new("Запрос на смену адреса эл. почты",
+                $"""
+                 Привет, {AccountEmails.Greeting(name, "ru")}!
+
+                 Мы получили запрос сменить адрес эл. почты твоего аккаунта на
+                 {newEmail}. Адрес изменится, когда откроют ссылку, которую мы
+                 отправили на новый адрес.
+
+                 Если это был(а) не ты, сразу войди в приложение и смени пароль.
+
+                 Çalış Bakalım Enik
+                 """),
             _ => new("E-posta değişikliği isteği",
                 $"""
                  Merhaba {AccountEmails.Greeting(name, "tr")},
@@ -124,6 +200,31 @@ public static class PersonalDetailEmails
                  If you did not make this change, reply to this e-mail. Your old
                  address is kept for 12 months, and in that time we can give you your
                  account back.
+
+                 Çalış Bakalım Enik
+                 """),
+            "de" => new("Deine E-Mail-Adresse wurde geändert",
+                $"""
+                 Hallo {AccountEmails.Greeting(name, "de")},
+
+                 Die E-Mail-Adresse deines Kontos wurde in {newEmail} geändert. Ab jetzt
+                 meldest du dich mit dieser Adresse an.
+
+                 Wenn du diese Änderung nicht vorgenommen hast, antworte auf diese
+                 E-Mail. Deine alte Adresse wird 12 Monate aufbewahrt; in dieser Zeit
+                 können wir dir dein Konto zurückgeben.
+
+                 Çalış Bakalım Enik
+                 """),
+            "ru" => new("Адрес эл. почты изменён",
+                $"""
+                 Привет, {AccountEmails.Greeting(name, "ru")}!
+
+                 Адрес эл. почты твоего аккаунта изменён на {newEmail}. Теперь ты
+                 входишь с этим адресом.
+
+                 Если это сделал(а) не ты, ответь на это письмо. Старый адрес хранится
+                 12 месяцев, и за это время мы можем вернуть тебе аккаунт.
 
                  Çalış Bakalım Enik
                  """),
