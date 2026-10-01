@@ -38,6 +38,14 @@ public static class AuthEmails
 
                  {forgotLink}
                  """),
+            "ar" => new("Çalış Bakalım Enik: محاولة تسجيل",
+                $"""
+                 يوجد حساب بهذا العنوان بالفعل، لذلك لم نفتح حسابًا جديدًا.
+
+                 إذا لم تتذكر كلمة المرور فيمكنك إعادة تعيينها من هنا:
+
+                 {forgotLink}
+                 """),
             _ => new("Çalış Bakalım Enik: kayıt denemesi",
                 $"""
                  Bu adresle zaten bir hesap var, bu yüzden yeni bir hesap açmadık.
@@ -81,6 +89,16 @@ public static class AuthEmails
 
                  Ссылка действует 24 часа.
                  """),
+            "ar" => new("Çalış Bakalım Enik: أكّد بريدك الإلكتروني",
+                $"""
+                 مرحبًا {name}،
+
+                 بقيت خطوة أخيرة لفتح حسابك. اضغط على الرابط أدناه:
+
+                 {link}
+
+                 الرابط صالح لمدة 24 ساعة.
+                 """),
             _ => new("Çalış Bakalım Enik: e-postanı doğrula",
                 $"""
                  Merhaba {name},
@@ -123,6 +141,15 @@ public static class AuthEmails
                  Ссылка действует 30 минут. Если ты этого не запрашивал(а), ничего
                  делать не нужно. Пароль не изменился.
                  """),
+            "ar" => new("Çalış Bakalım Enik: إعادة تعيين كلمة المرور",
+                $"""
+                 اضغط على الرابط أدناه لإعادة تعيين كلمة المرور:
+
+                 {link}
+
+                 الرابط صالح لمدة 30 دقيقة. إذا لم تطلب ذلك فلا داعي لفعل أي شيء.
+                 لم تتغير كلمة المرور.
+                 """),
             _ => new("Çalış Bakalım Enik: şifre sıfırlama",
                 $"""
                  Şifreni sıfırlamak için aşağıdaki bağlantıya tıkla:
@@ -146,6 +173,9 @@ public static class AuthEmails
             "ru" => new("Твой код подтверждения",
                 $"Твой код подтверждения Çalış Bakalım Enik: {code}\n" +
                 $"Код действует {minutes} мин."),
+            "ar" => new("رمز التحقق الخاص بك",
+                $"رمز التحقق الخاص بك في Çalış Bakalım Enik: {code}\n" +
+                $"الرمز صالح لمدة {minutes} دقيقة."),
             _ => new("Doğrulama kodun",
                 $"Çalış Bakalım Enik doğrulama kodun: {code}\n" +
                 $"Kod {minutes} dakika geçerli."),
