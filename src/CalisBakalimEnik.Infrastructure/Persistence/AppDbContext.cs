@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Common;
+using CalisBakalimEnik.Domain.Diagnostics;
 using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Domain.Notifications;
 using CalisBakalimEnik.Domain.Content;
@@ -24,6 +25,7 @@ public sealed class AppDbContext(
     public DbSet<MfaFactor> MfaFactors => Set<MfaFactor>();
     public DbSet<MfaRecoveryCode> MfaRecoveryCodes => Set<MfaRecoveryCode>();
     public DbSet<SecurityEvent> SecurityEvents => Set<SecurityEvent>();
+    public DbSet<ClientErrorReport> ClientErrorReports => Set<ClientErrorReport>();
 
     // Phase 5. These carry a UserId rather than an OwnerId on purpose: the
     // outbox processor has no request to resolve a current user from, and the

@@ -61,6 +61,13 @@ public sealed class RetentionOptions
     public int PersonalDetailHistoryDays { get; set; } = 365;
 
     /// <summary>
+    /// Error reports from the app (D19). Ninety days: enough to see whether a
+    /// fix held across a few releases; short, because a message can carry
+    /// fragments of what the person was doing.
+    /// </summary>
+    public int ClientErrorReportDays { get; set; } = 90;
+
+    /// <summary>
     /// Dead refresh tokens, counted from the later of expiry and revocation.
     /// </summary>
     /// <remarks>

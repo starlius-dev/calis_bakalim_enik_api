@@ -206,6 +206,7 @@ app.UseAuthorization();
 var api = app.MapGroup("").CompleteProblemDetails();
 
 api.MapSystemEndpoints();
+api.MapClientErrorEndpoints();
 api.MapAuthEndpoints();
 api.MapMfaEndpoints();
 api.MapAccountSecurityEndpoints();

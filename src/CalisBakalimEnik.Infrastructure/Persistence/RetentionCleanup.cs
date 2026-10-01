@@ -165,6 +165,9 @@ public sealed class RetentionCleanup(
         new("previous names and e-mail addresses", "personal_detail_changes",
             "changed_at < @cutoff", o.PersonalDetailHistoryDays),
 
+        new("app error reports", "client_error_reports",
+            "received_at < @cutoff", o.ClientErrorReportDays),
+
         new("processed outbox messages", "outbox_messages",
             "processed_at IS NOT NULL AND processed_at < @cutoff",
             o.ProcessedOutboxDays),

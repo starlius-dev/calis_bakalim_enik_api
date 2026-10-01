@@ -87,6 +87,7 @@ public static class UserDataMap
         new("notifications", "hesap", User, None),
         new("notification_preferences", "hesap", User, None),
         new("personal_detail_changes", "hesap", User, None),
+        new("client_error_reports", "hesap", User, None),
         new("devices", "hesap", User, ["fcm_token"]),
         new("mfa_recovery_codes", "hesap", User, ["code_hash"]),
         new("mfa_factors", "hesap", User, ["secret_encrypted"]),

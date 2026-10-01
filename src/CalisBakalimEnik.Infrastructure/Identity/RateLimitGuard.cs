@@ -60,6 +60,15 @@ public sealed class RateLimitGuard(ICacheStore cache)
             new("forgot", 3, TimeSpan.FromHours(1));
 
         /// <summary>
+        /// Error reports from the app (D19). Per address, because a report
+        /// may come before sign-in. The app sends each distinct error once
+        /// per run and at most twenty in all; this is the ceiling for a
+        /// broken build crashing in a loop or someone posting junk.
+        /// </summary>
+        public static readonly RateLimitPolicy ClientErrors =
+            new("client-errors", 30, TimeSpan.FromMinutes(10));
+
+        /// <summary>
         /// The blanket budget for everything behind a login. Generous on
         /// purpose: it is there to stop a runaway client or a scraped token,
         /// not to ration ordinary use, and a real session opening several
