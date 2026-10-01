@@ -101,18 +101,38 @@ for env in $BACKUP_ENVS; do
 done
 
 # ── the server's own configuration ───────────────────────────────────────
-# What a rebuilt box needs besides Enik's data: every nginx site, the systemd
-# units, the firewall, ssh, fail2ban, logrotate and apt settings. Read as
-# servrinuse, so root-only files (the tunnel token, redis.conf, ufw's rule
-# files) are skipped rather than failing the run; the tunnel token can be
-# reissued from the Cloudflare dashboard. Only ever read, never changed.
+# What a rebuilt box needs besides Enik's data (H51): every nginx site, the
+# systemd units and daemon settings, the firewall, ssh, fail2ban, logrotate,
+# apt, rsyslog, cron, sysctl, smartd and redis settings, plus an inventory of
+# the installed packages and enabled services. Read as servrinuse, so
+# root-only files (the tunnel token, ufw's rule files, and redis.conf where it
+# is root-only) are skipped rather than failing the run; the tunnel token can
+# be reissued from the Cloudflare dashboard and the firewall rules are written
+# out in HOME-SERVER.md. Only ever read, never changed.
 echo "== server"
 mkdir -p "$OUT/server"
 name="cbe-server-${STAMP}.tar.zst.age"
-if tar -C / --ignore-failed-read -cf - \
-        etc/nginx etc/systemd/system etc/ssh/sshd_config etc/ssh/sshd_config.d \
+
+# What the box IS, not only how it is configured: a rebuild starts from these
+# lists. Read-only commands, each allowed to fail without failing the run.
+inv="$WORK/inventory"
+mkdir -p "$inv"
+apt-mark showmanual > "$inv/packages-manual.txt" 2>&1 || true
+dpkg-query -W -f='${Package} ${Version}\n' > "$inv/packages-all.txt" 2>&1 || true
+systemctl list-unit-files --state=enabled --no-legend > "$inv/units-enabled.txt" 2>&1 || true
+systemctl list-timers --all --no-legend > "$inv/timers.txt" 2>&1 || true
+ls -la /var/www > "$inv/var-www.txt" 2>&1 || true
+{ uname -a; lsb_release -ds; hostnamectl; } > "$inv/system.txt" 2>&1 || true
+ip -br addr > "$inv/network.txt" 2>&1 || true
+
+if tar --ignore-failed-read -cf - \
+        -C / etc/nginx etc/systemd/system etc/ssh/sshd_config etc/ssh/sshd_config.d \
         etc/fail2ban etc/logrotate.d etc/apt/apt.conf.d etc/apt/sources.list.d \
         etc/postgresql etc/sudoers.d etc/hosts etc/fstab \
+        etc/rsyslog.d etc/cron.d etc/sysctl.d etc/smartd.conf etc/redis etc/ufw \
+        etc/systemd/logind.conf etc/systemd/journald.conf etc/systemd/sleep.conf \
+        etc/calis_bakalim_enik \
+        -C "$WORK" inventory \
         2> /dev/null | zstd -q -10 | age -r "$AGE_RECIPIENT" > "$OUT/server/.${name}.partial"; then
     mv "$OUT/server/.${name}.partial" "$OUT/server/${name}"
     echo "==> $(du -h "$OUT/server/${name}" | cut -f1)  ${name}"
