@@ -55,6 +55,18 @@ public static class AccountEmails
 
                  Çalış Bakalım Enik
                  """),
+            "ar" => new("سيُحذف حسابك",
+                $"""
+                 مرحبًا {Greeting(name, "ar")}،
+
+                 تلقّينا طلبك لحذف حسابك في Çalış Bakalım Enik. سيُحذف حسابك وجميع
+                 بياناتك نهائيًا في {when}.
+
+                 إذا غيّرت رأيك أو لم تقدّم هذا الطلب، فسجّل الدخول إلى التطبيق قبل
+                 ذلك واختر "إلغاء الحذف". وإذا لم تقدّم الطلب فغيّر كلمة المرور أيضًا.
+
+                 Çalış Bakalım Enik
+                 """),
             _ => new("Hesabın silinecek",
                 $"""
                  Merhaba {Greeting(name, "tr")},
@@ -103,6 +115,16 @@ public static class AccountEmails
                  изменений.
 
                  Если это сделал(а) не ты, сразу смени пароль.
+
+                 Çalış Bakalım Enik
+                 """),
+            "ar" => new("أُلغي حذف الحساب",
+                $"""
+                 مرحبًا {Greeting(name, "ar")}،
+
+                 أُلغي طلب حذف حسابك. حسابك وبياناتك كما هي.
+
+                 إذا لم تفعل ذلك بنفسك فغيّر كلمة المرور فورًا.
 
                  Çalış Bakalım Enik
                  """),
@@ -160,6 +182,18 @@ public static class AccountEmails
 
                  Çalış Bakalım Enik
                  """),
+            "ar" => new("حُذف حسابك",
+                $"""
+                 مرحبًا {Greeting(name, "ar")}،
+
+                 كما طلبت، حُذف حسابك في Çalış Bakalım Enik وجميع بياناتك نهائيًا.
+                 أُزيل اسمك وبريدك الإلكتروني من سجلات الأمان، وستُحذف هذه السجلات
+                 بالكامل بعد ستة أشهر.
+
+                 هذه آخر رسالة نرسلها إلى هذا العنوان.
+
+                 Çalış Bakalım Enik
+                 """),
             _ => new("Hesabın silindi",
                 $"""
                  Merhaba {Greeting(name, "tr")},
@@ -176,6 +210,6 @@ public static class AccountEmails
 
     internal static string Greeting(string name, string language) =>
         string.IsNullOrWhiteSpace(name)
-            ? language switch { "en" => "there", "de" => "du", "ru" => "друг", _ => "merhaba" }
+            ? language switch { "en" => "there", "de" => "du", "ru" => "друг", "ar" => "صديقي", _ => "merhaba" }
             : name.Trim();
 }

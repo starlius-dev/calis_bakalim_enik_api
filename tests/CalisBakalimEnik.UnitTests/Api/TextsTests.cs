@@ -77,6 +77,7 @@ public partial class TextsTests
     [InlineData("en")]
     [InlineData("de")]
     [InlineData("ru")]
+    [InlineData("ar")]
     public void Every_Turkish_sentence_in_the_code_has_an_entry_in_every_language(string language)
     {
         var table = Texts.KeysOf(language).ToHashSet();
@@ -107,6 +108,7 @@ public partial class TextsTests
     [InlineData("en")]
     [InlineData("de")]
     [InlineData("ru")]
+    [InlineData("ar")]
     public void Every_mail_exists_in_every_language_without_dashes(string language)
     {
         var mails = new[]
