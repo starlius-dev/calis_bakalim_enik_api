@@ -142,6 +142,22 @@ add_header Strict-Transport-Security $enik_hsts always;
 # Cors__AllowedOrigins in the API env — a hostname allowed there but missing
 # here is a request the server permits and the browser refuses, which looks like
 # a server fault and is not one.
+#
+# style-src 'unsafe-inline' is DELIBERATE (B10), not an oversight:
+#  - the Flutter engine creates its own <style> element inside flt-glass-pane
+#    at start-up (checked in the 3.47 bundle: document.createElement("style"),
+#    appended to the shadow root), and
+#  - web/index.html paints the boot screen with an inline <style>, because it
+#    must show before any Dart exists.
+# Without it the engine's styles are refused and the page renders wrong.
+# The risk accepted is CSS injection only: script-src stays 'self', so no
+# injected script runs, and the app draws to a canvas, so there is little DOM
+# text for a CSS selector to read out. The stricter alternative is a nonce per
+# request: nginx stamps a random value ($request_id via sub_filter) into
+# index.html and into this header, the boot <style> carries it, and
+# flutter_bootstrap.js passes it to the engine (_flutter.loader.load({nonce})),
+# which applies it to its <style>. Worth doing if the app ever renders
+# user-supplied HTML; not before.
 add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://__API_HOST__; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
 NGINX
 sed -i "s|__API_HOST__|${API_HOST}|g" "$SNIPPET"
