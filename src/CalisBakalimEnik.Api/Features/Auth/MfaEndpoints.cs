@@ -129,8 +129,8 @@ public static class MfaEndpoints
 
         var pair = await auth.IssueAsync(user, ContextFrom(http), mfaSatisfied: true, ct);
 
-        return Results.Ok(new TokenResponse(
-            pair.AccessToken, pair.AccessExpiresAt, pair.RefreshToken, pair.RefreshExpiresAt));
+        return Results.Ok(RefreshCookie.Issue(http, new TokenResponse(
+            pair.AccessToken, pair.AccessExpiresAt, pair.RefreshToken, pair.RefreshExpiresAt)));
     }
 
     /// <summary>

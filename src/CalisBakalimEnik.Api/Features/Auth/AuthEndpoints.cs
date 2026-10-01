@@ -19,7 +19,9 @@ public sealed record RegisterRequest(
     string Email, string Password, string? DisplayName, string? Locale = null);
 public sealed record ConfirmEmailRequest(string UserId, string Token);
 public sealed record LoginRequest(string Email, string Password);
-public sealed record RefreshRequest(string RefreshToken);
+/// <param name="RefreshToken">Null for a web client that keeps it in the
+/// HttpOnly cookie (B07); the cookie is read instead.</param>
+public sealed record RefreshRequest(string? RefreshToken);
 
 /// <summary>Returned by /login when a second factor is enrolled.</summary>
 public sealed record MfaRequiredResponse(
@@ -27,10 +29,12 @@ public sealed record MfaRequiredResponse(
     Guid ChallengeId,
     IReadOnlyCollection<FactorResponse> Factors);
 
+/// <param name="RefreshToken">Null for a web client that asked for the
+/// HttpOnly cookie (B07): it is in the cookie, never in the body.</param>
 public sealed record TokenResponse(
     string AccessToken,
     DateTimeOffset AccessExpiresAt,
-    string RefreshToken,
+    string? RefreshToken,
     DateTimeOffset RefreshExpiresAt);
 
 public sealed record MeResponse(
@@ -362,7 +366,7 @@ public static class AuthEndpoints
 
         var pair = await auth.IssueAsync(user, ContextFrom(http), mfaSatisfied: false, ct);
 
-        return Results.Ok(ToResponse(pair));
+        return Results.Ok(RefreshCookie.Issue(http, ToResponse(pair)));
     }
 
     internal static IResult Locked(LockoutState state, HttpContext http)
@@ -379,26 +383,40 @@ public static class AuthEndpoints
     }
 
     private static async Task<IResult> RefreshAsync(
-        RefreshRequest request,
+        RefreshRequest? request,
         AuthService auth,
         HttpContext http,
         CancellationToken ct)
     {
-        var result = await auth.RefreshAsync(request.RefreshToken, ContextFrom(http), ct);
+        // The body for the phone apps, the HttpOnly cookie for the web (B07).
+        var token = request?.RefreshToken ?? RefreshCookie.Read(http);
+        if (string.IsNullOrWhiteSpace(token))
+            return Problem(AuthErrors.InvalidRefreshToken, StatusCodes.Status401Unauthorized, http);
 
-        return result.Succeeded
-            ? Results.Ok(ToResponse(result.Value))
-            : Problem(result.Error, StatusCodes.Status401Unauthorized, http);
+        var result = await auth.RefreshAsync(token, ContextFrom(http), ct);
+
+        if (!result.Succeeded)
+        {
+            // A dead cookie is dropped, so the browser stops offering it.
+            if (RefreshCookie.Wanted(http)) RefreshCookie.Clear(http);
+            return Problem(result.Error, StatusCodes.Status401Unauthorized, http);
+        }
+
+        return Results.Ok(RefreshCookie.Issue(http, ToResponse(result.Value)));
     }
 
     private static async Task<IResult> LogoutAsync(
-        RefreshRequest request,
+        RefreshRequest? request,
         AuthService auth,
         ITokenService tokens,
         ClaimsPrincipal principal,
+        HttpContext http,
         CancellationToken ct)
     {
-        await auth.RevokeAsync(request.RefreshToken, RefreshRevokedReason.Logout, ct);
+        var token = request?.RefreshToken ?? RefreshCookie.Read(http);
+        if (!string.IsNullOrWhiteSpace(token))
+            await auth.RevokeAsync(token, RefreshRevokedReason.Logout, ct);
+        RefreshCookie.Clear(http);
         await DenylistCurrentAccessTokenAsync(tokens, principal, ct);
 
         return Results.NoContent();
