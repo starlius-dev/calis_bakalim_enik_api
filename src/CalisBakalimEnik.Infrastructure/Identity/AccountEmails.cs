@@ -28,6 +28,33 @@ public static class AccountEmails
 
                  Çalış Bakalım Enik
                  """),
+            "de" => new("Dein Konto wird gelöscht",
+                $"""
+                 Hallo {Greeting(name, "de")},
+
+                 Wir haben deine Anfrage erhalten, dein Konto bei Çalış Bakalım Enik zu
+                 löschen. Dein Konto und alle deine Daten werden am {when} endgültig
+                 gelöscht.
+
+                 Wenn du es dir anders überlegt hast oder die Anfrage nicht von dir
+                 kam, melde dich vorher in der App an und wähle "Löschung widerrufen".
+                 Kam die Anfrage nicht von dir, ändere außerdem dein Passwort.
+
+                 Çalış Bakalım Enik
+                 """),
+            "ru" => new("Твой аккаунт будет удалён",
+                $"""
+                 Привет, {Greeting(name, "ru")}!
+
+                 Мы получили запрос на удаление твоего аккаунта Çalış Bakalım Enik.
+                 Аккаунт и все данные будут удалены навсегда {when}.
+
+                 Если ты передумал(а) или не отправлял(а) этот запрос, войди в
+                 приложение до этого срока и выбери «Отменить удаление». Если запрос
+                 отправлял(а) не ты, смени также пароль.
+
+                 Çalış Bakalım Enik
+                 """),
             _ => new("Hesabın silinecek",
                 $"""
                  Merhaba {Greeting(name, "tr")},
@@ -54,6 +81,28 @@ public static class AccountEmails
                  your data are just as they were.
 
                  If you did not do this, change your password straight away.
+
+                 Çalış Bakalım Enik
+                 """),
+            "de" => new("Kontolöschung widerrufen",
+                $"""
+                 Hallo {Greeting(name, "de")},
+
+                 Deine Anfrage zur Löschung deines Kontos wurde widerrufen. Dein Konto
+                 und deine Daten sind unverändert.
+
+                 Wenn du das nicht warst, ändere sofort dein Passwort.
+
+                 Çalış Bakalım Enik
+                 """),
+            "ru" => new("Удаление аккаунта отменено",
+                $"""
+                 Привет, {Greeting(name, "ru")}!
+
+                 Запрос на удаление аккаунта отменён. Аккаунт и данные остались без
+                 изменений.
+
+                 Если это сделал(а) не ты, сразу смени пароль.
 
                  Çalış Bakalım Enik
                  """),
@@ -86,6 +135,31 @@ public static class AccountEmails
 
                  Çalış Bakalım Enik
                  """),
+            "de" => new("Dein Konto wurde gelöscht",
+                $"""
+                 Hallo {Greeting(name, "de")},
+
+                 Wie gewünscht wurden dein Konto bei Çalış Bakalım Enik und alle deine
+                 Daten endgültig gelöscht. Dein Name und deine E-Mail-Adresse wurden aus
+                 den Sicherheitsprotokollen entfernt; diese Protokolle werden in sechs
+                 Monaten vollständig gelöscht.
+
+                 Das ist die letzte E-Mail, die wir an diese Adresse schicken.
+
+                 Çalış Bakalım Enik
+                 """),
+            "ru" => new("Твой аккаунт удалён",
+                $"""
+                 Привет, {Greeting(name, "ru")}!
+
+                 По твоей просьбе аккаунт Çalış Bakalım Enik и все данные удалены
+                 навсегда. Имя и адрес эл. почты удалены из журналов безопасности;
+                 сами журналы будут полностью удалены через шесть месяцев.
+
+                 Это последнее письмо, которое мы отправляем на этот адрес.
+
+                 Çalış Bakalım Enik
+                 """),
             _ => new("Hesabın silindi",
                 $"""
                  Merhaba {Greeting(name, "tr")},
@@ -101,5 +175,7 @@ public static class AccountEmails
         };
 
     internal static string Greeting(string name, string language) =>
-        string.IsNullOrWhiteSpace(name) ? (language == "en" ? "there" : "merhaba") : name.Trim();
+        string.IsNullOrWhiteSpace(name)
+            ? language switch { "en" => "there", "de" => "du", "ru" => "друг", _ => "merhaba" }
+            : name.Trim();
 }

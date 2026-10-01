@@ -73,19 +73,40 @@ public partial class TextsTests
     /// entry. Without this, a new message ships in Turkish to English readers
     /// and nothing anywhere says so.
     /// </summary>
-    [Fact]
-    public void Every_Turkish_sentence_in_the_code_has_an_English_entry()
+    [Theory]
+    [InlineData("en")]
+    [InlineData("de")]
+    [InlineData("ru")]
+    public void Every_Turkish_sentence_in_the_code_has_an_entry_in_every_language(string language)
     {
-        var english = Texts.KeysOf("en").ToHashSet();
-        var missing = TurkishSentences().Where(s => !english.Contains(s)).ToList();
+        var table = Texts.KeysOf(language).ToHashSet();
+        var missing = TurkishSentences().Where(s => !table.Contains(s)).ToList();
 
         missing.Should().BeEmpty(
-            "add these to src/CalisBakalimEnik.Application/Common/Localization/en.json");
+            $"add these to src/CalisBakalimEnik.Application/Common/Localization/{language}.json");
+    }
+
+    [Fact]
+    public void Every_language_table_has_the_same_sentences_and_placeholders()
+    {
+        var english = Texts.KeysOf("en").ToHashSet();
+        foreach (var language in Texts.Languages.Where(l => l != Texts.Source))
+        {
+            Texts.KeysOf(language).Should().BeEquivalentTo(english, language);
+            foreach (var key in english)
+            {
+                var placeholders = Regex.Matches(key, @"\{\d+\}").Select(m => m.Value).Order();
+                Regex.Matches(Texts.In(language, key), @"\{\d+\}").Select(m => m.Value).Order()
+                    .Should().Equal(placeholders, $"{language}: {key}");
+            }
+        }
     }
 
     [Theory]
     [InlineData("tr")]
     [InlineData("en")]
+    [InlineData("de")]
+    [InlineData("ru")]
     public void Every_mail_exists_in_every_language_without_dashes(string language)
     {
         var mails = new[]
@@ -105,8 +126,8 @@ public partial class TextsTests
             m.Body.Should().NotContainAny("—", "–");
         });
 
-        if (language == "en")
-            mails.Should().AllSatisfy(m => m.Body.Should().NotContain("Merhaba"));
+        if (language != "tr")
+            mails.Should().AllSatisfy(m => m.Body.Should().NotContain("Merhaba").And.NotContain("geçerli"));
     }
 
     // ── the scan, the same rules as tools/turkish_strings.py ─────────────

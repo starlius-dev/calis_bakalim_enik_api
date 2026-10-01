@@ -21,6 +21,23 @@ public static class AuthEmails
 
                  {forgotLink}
                  """),
+            "de" => new("Çalış Bakalım Enik: Registrierungsversuch",
+                $"""
+                 Mit dieser Adresse gibt es schon ein Konto, deshalb haben wir kein
+                 neues eröffnet.
+
+                 Wenn du dein Passwort vergessen hast, kannst du es hier zurücksetzen:
+
+                 {forgotLink}
+                 """),
+            "ru" => new("Çalış Bakalım Enik: попытка регистрации",
+                $"""
+                 С этим адресом уже есть аккаунт, поэтому новый мы не открыли.
+
+                 Если ты не помнишь пароль, его можно сбросить здесь:
+
+                 {forgotLink}
+                 """),
             _ => new("Çalış Bakalım Enik: kayıt denemesi",
                 $"""
                  Bu adresle zaten bir hesap var, bu yüzden yeni bir hesap açmadık.
@@ -43,6 +60,26 @@ public static class AuthEmails
                  {link}
 
                  The link works for 24 hours.
+                 """),
+            "de" => new("Çalış Bakalım Enik: Bestätige deine E-Mail",
+                $"""
+                 Hallo {name},
+
+                 Nur noch ein Schritt bis zu deinem Konto. Klick auf den Link:
+
+                 {link}
+
+                 Der Link gilt 24 Stunden.
+                 """),
+            "ru" => new("Çalış Bakalım Enik: подтверди эл. почту",
+                $"""
+                 Привет, {name}!
+
+                 Остался последний шаг, чтобы открыть аккаунт. Перейди по ссылке:
+
+                 {link}
+
+                 Ссылка действует 24 часа.
                  """),
             _ => new("Çalış Bakalım Enik: e-postanı doğrula",
                 $"""
@@ -68,6 +105,24 @@ public static class AuthEmails
                  The link works for 30 minutes. If you did not ask for this, there is
                  nothing you need to do. Your password has not changed.
                  """),
+            "de" => new("Çalış Bakalım Enik: Passwort zurücksetzen",
+                $"""
+                 Klick auf den Link, um dein Passwort zurückzusetzen:
+
+                 {link}
+
+                 Der Link gilt 30 Minuten. Wenn du das nicht angefordert hast, musst du
+                 nichts tun. Dein Passwort wurde nicht geändert.
+                 """),
+            "ru" => new("Çalış Bakalım Enik: сброс пароля",
+                $"""
+                 Перейди по ссылке, чтобы сбросить пароль:
+
+                 {link}
+
+                 Ссылка действует 30 минут. Если ты этого не запрашивал(а), ничего
+                 делать не нужно. Пароль не изменился.
+                 """),
             _ => new("Çalış Bakalım Enik: şifre sıfırlama",
                 $"""
                  Şifreni sıfırlamak için aşağıdaki bağlantıya tıkla:
@@ -85,6 +140,12 @@ public static class AuthEmails
             "en" => new("Your verification code",
                 $"Your Çalış Bakalım Enik verification code: {code}\n" +
                 $"The code works for {minutes} minutes."),
+            "de" => new("Dein Bestätigungscode",
+                $"Dein Bestätigungscode für Çalış Bakalım Enik: {code}\n" +
+                $"Der Code gilt {minutes} Minuten."),
+            "ru" => new("Твой код подтверждения",
+                $"Твой код подтверждения Çalış Bakalım Enik: {code}\n" +
+                $"Код действует {minutes} мин."),
             _ => new("Doğrulama kodun",
                 $"Çalış Bakalım Enik doğrulama kodun: {code}\n" +
                 $"Kod {minutes} dakika geçerli."),
