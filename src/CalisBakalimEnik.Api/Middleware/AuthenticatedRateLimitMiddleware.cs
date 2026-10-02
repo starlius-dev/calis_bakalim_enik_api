@@ -2,6 +2,7 @@ using System.Security.Claims;
 using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Infrastructure.Identity;
 using Microsoft.AspNetCore.Mvc;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Middleware;
 
@@ -69,9 +70,9 @@ public sealed class AuthenticatedRateLimitMiddleware(RequestDelegate next)
         var problem = new ProblemDetails
         {
             Type = ProblemTypes.RateLimited,
-            Title = "Çok fazla istek",
+            Title = T("Çok fazla istek"),
             Status = StatusCodes.Status429TooManyRequests,
-            Detail = "Çok hızlı denedin. Biraz bekleyip tekrar dene.",
+            Detail = T("Çok hızlı denedin. Biraz bekleyip tekrar dene."),
             Instance = http.Request.Path,
         };
 

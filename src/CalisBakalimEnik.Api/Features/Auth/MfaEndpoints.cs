@@ -7,6 +7,7 @@ using CalisBakalimEnik.Domain.Identity;
 using CalisBakalimEnik.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Features.Auth;
 
@@ -128,8 +129,8 @@ public static class MfaEndpoints
 
         var pair = await auth.IssueAsync(user, ContextFrom(http), mfaSatisfied: true, ct);
 
-        return Results.Ok(new TokenResponse(
-            pair.AccessToken, pair.AccessExpiresAt, pair.RefreshToken, pair.RefreshExpiresAt));
+        return Results.Ok(RefreshCookie.Issue(http, new TokenResponse(
+            pair.AccessToken, pair.AccessExpiresAt, pair.RefreshToken, pair.RefreshExpiresAt)));
     }
 
     /// <summary>
@@ -274,7 +275,7 @@ public static class MfaEndpoints
             new { factor = "RecoveryCode", count = codes.Count, stage = "auto" }, ct);
 
         return Results.Ok(new TotpConfirmedResponse(
-            codes, "Bu kodlar bir daha gösterilmeyecek."));
+            codes, T("Bu kodlar bir daha gösterilmeyecek.")));
     }
 
     private static async Task<IResult> EnrolOtpAsync(
@@ -350,7 +351,7 @@ public static class MfaEndpoints
             user.Id, ClientIp(http), UserAgent(http),
             new { factor = "RecoveryCode", count = codes.Count }, ct);
 
-        return Results.Ok(new { codes, warning = "Bu kodlar bir daha gösterilmeyecek." });
+        return Results.Ok(new { codes, warning = T("Bu kodlar bir daha gösterilmeyecek.") });
     }
 
     private static async Task<IResult> RemoveFactorAsync(
@@ -415,7 +416,16 @@ public static class MfaEndpoints
         => http.Request.Headers.UserAgent.ToString();
 
     internal static AuthContext ContextFrom(HttpContext http)
-        => new(ClientIp(http), UserAgent(http), DeviceId: null);
+        => new(ClientIp(http), UserAgent(http), DeviceId: null, InstallationId(http));
+
+    /// <summary>
+    /// The app's per-device id, only when it is a well-formed GUID: it is
+    /// stored, and a header is anything a client wants it to be.
+    /// </summary>
+    internal static string? InstallationId(HttpContext http) =>
+        Guid.TryParse(http.Request.Headers["X-Installation-Id"].ToString(), out var id)
+            ? id.ToString("N")
+            : null;
 
     internal static IResult Problem(Error error, int status, HttpContext http)
     {

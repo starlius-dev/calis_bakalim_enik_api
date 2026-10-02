@@ -1,0 +1,277 @@
+#!/bin/bash
+# enik-deploy: installs a signed Çalış Bakalım Enik build on the server.
+# Installed as /usr/local/sbin/enik-deploy (root, 0755) by install-enik-isolation.sh.
+# servrinuse may run it without a password (/etc/sudoers.d/enik-deploy), which
+# is safe because it only ever installs a bundle SIGNED by the laptop's key:
+# whoever holds the servrinuse account can upload anything, but cannot sign it.
+#
+#   enik-deploy install <bundle file name in /var/lib/enik-deploy/incoming>
+#   enik-deploy rollback api|web qa|prod
+#   enik-deploy status
+#
+# Called by deploy/publish-api.sh and the Flutter repo's deploy/publish-web.sh;
+# not meant to be typed by hand, though it is safe to.
+#
+# Layout (H54). Every build lives in its own folder and a symlink names the live
+# one, so switching is one rename and a power cut at any moment leaves either the
+# old or the new build live, never half of each:
+#
+#   /var/www/calis_bakalim_enik_api/releases/<env>/<build>-<sha>/   API builds
+#   /var/www/calis_bakalim_enik_api/<env> -> releases/<env>/<id>     live API
+#   /var/www/calis_bakalim_enik/releases/<env>/<build>-<sha>/       web builds
+#   /var/www/calis_bakalim_enik/<env> -> releases/<env>/<id>         live web
+#
+# Releases are root-owned and read-only to the app, which runs as `enik`. The
+# app's settings are /etc/calis_bakalim_enik/<env>/api.env, the migrations
+# role's are .../db.env; both root 0600, read by systemd and by this program.
+
+set -euo pipefail
+umask 022
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ETC=/etc/calis_bakalim_enik
+SIGNERS="$ETC/deploy-signers"
+SIGNER=yk-laptop
+NAMESPACE=enik-deploy
+LIB=/var/lib/enik-deploy
+INCOMING="$LIB/incoming"
+KEEP=5
+
+[ "$(id -u)" -eq 0 ] || { echo "enik-deploy: run with sudo" >&2; exit 1; }
+
+die() { echo "!! $*" >&2; exit 1; }
+say() { echo "==> $*"; }
+
+base_of() {  # kind -> base directory
+    case "$1" in
+        api) echo /var/www/calis_bakalim_enik_api ;;
+        web) echo /var/www/calis_bakalim_enik ;;
+    esac
+}
+port_of() { [ "$1" = prod ] && echo 3010 || echo 3011; }
+
+current_id() {  # kind env -> id of the live release, or empty
+    local link
+    link="$(base_of "$1")/$2"
+    [ -L "$link" ] && basename "$(readlink "$link")" || true
+}
+
+# Switch the live symlink in one rename(2). ln -sfn alone is unlink + symlink,
+# which leaves a moment with no link at all.
+switch_to() {  # kind env id
+    local base
+    base=$(base_of "$1")
+    [ -d "$base/releases/$2/$3" ] || die "no release $1/$2/$3"
+    ln -sfn "releases/$2/$3" "$base/.$2.next"
+    mv -T "$base/.$2.next" "$base/$2"
+    sync
+    echo "$3" >> "$base/releases/$2/.history"
+}
+
+healthy() {  # env -> 0 when ready within 60 s
+    local port
+    port=$(port_of "$1")
+    for _ in $(seq 1 30); do
+        curl -sf -o /dev/null "http://127.0.0.1:${port}/api/health/ready" && return 0
+        sleep 2
+    done
+    return 1
+}
+
+restart_api() {  # env
+    local unit="$1_calis_bakalim_enik"
+    systemctl reset-failed "$unit" 2> /dev/null || true
+    systemctl restart "$unit"
+}
+
+# A slot that is switched off (disabled and not running, e.g. prod before
+# launch) stays off. A deploy or rollback still starts it, because only a
+# running build can prove it is healthy, and then stops it again: the slot is
+# left as it was found, and it stays disabled across reboots.
+slot_is_off() {  # env
+    local unit="$1_calis_bakalim_enik"
+    ! systemctl is-enabled --quiet "$unit" && ! systemctl is-active --quiet "$unit"
+}
+
+leave_as_found() {  # env was_off
+    [ "$2" = yes ] || return 0
+    systemctl stop "$1_calis_bakalim_enik"
+    say "$1 was switched off before; stopped again after the check (still disabled)"
+}
+
+# The release that was live before the current one and still exists.
+previous_id() {  # kind env
+    local base cur
+    base=$(base_of "$1")
+    cur=$(current_id "$1" "$2")
+    [ -f "$base/releases/$2/.history" ] || return 0
+    tac "$base/releases/$2/.history" | awk -v cur="$cur" '$0 != cur' | while read -r id; do
+        if [ -d "$base/releases/$2/$id" ]; then echo "$id"; break; fi
+    done
+}
+
+# Keep the newest KEEP releases plus whatever is live or was live just before.
+prune() {  # kind env
+    local base dir cur prev
+    base=$(base_of "$1"); dir="$base/releases/$2"
+    cur=$(current_id "$1" "$2"); prev=$(previous_id "$1" "$2")
+    # %C@ is when the folder was renamed into place, i.e. when it was installed.
+    find "$dir" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%C@ %f\n' \
+        | sort -rn | awk -v k="$KEEP" 'NR > k {print $2}' \
+        | while read -r id; do
+            [ "$id" = "$cur" ] || [ "$id" = "$prev" ] && continue
+            rm -rf "${dir:?}/$id"
+            echo "   pruned $1/$2/$id"
+        done
+}
+
+status() {
+    for kind in api web; do
+        for env in qa prod; do
+            printf '%-4s %-5s live %-22s previous %s\n' "$kind" "$env" \
+                "$(current_id "$kind" "$env")" "$(previous_id "$kind" "$env")"
+        done
+    done
+}
+
+rollback() {  # kind env
+    local kind="$1" env="$2" prev
+    prev=$(previous_id "$kind" "$env")
+    [ -n "$prev" ] || die "no earlier $kind release for $env to go back to"
+    say "$kind $env: $(current_id "$kind" "$env") -> $prev"
+    switch_to "$kind" "$env" "$prev"
+    if [ "$kind" = api ]; then
+        local was_off=no
+        slot_is_off "$env" && was_off=yes
+        echo "   (database migrations are NOT rolled back; they are additive by rule)"
+        restart_api "$env"
+        healthy "$env" || die "$env API not healthy after rollback; journalctl -u ${env}_calis_bakalim_enik"
+        say "healthy: $(curl -s "http://127.0.0.1:$(port_of "$env")/api/version")"
+        leave_as_found "$env" "$was_off"
+    fi
+}
+
+install_bundle() {  # file name
+    local name="$1"
+    [[ "$name" =~ ^(api|web)-(qa|prod)-([0-9]+)-([0-9a-f]{8}(-dirty)?)\.tar\.gz$ ]] \
+        || die "not a bundle name: $name"
+    local kind="${BASH_REMATCH[1]}" env="${BASH_REMATCH[2]}" build="${BASH_REMATCH[3]}"
+    local id="${BASH_REMATCH[3]}-${BASH_REMATCH[4]}"
+    local src="$INCOMING/$name"
+    [ -f "$src" ] && [ ! -L "$src" ] && [ -f "$src.sig" ] && [ ! -L "$src.sig" ] \
+        || die "$src (and .sig) not found"
+    [ "$env" = prod ] && [[ "$id" == *-dirty ]] && die "prod takes committed builds only"
+
+    local base work
+    base=$(base_of "$kind")
+    mkdir -p "$LIB/work"; chmod 0700 "$LIB/work"
+    work=$(mktemp -d "$LIB/work/$kind-$env.XXXXXX")
+    # shellcheck disable=SC2064
+    trap "rm -rf '$work'" EXIT
+
+    # Copied first, then checked: servrinuse can rewrite the incoming file at
+    # any moment, so the bytes verified must be the bytes installed.
+    cp -- "$src" "$work/b.tar.gz"
+    cp -- "$src.sig" "$work/b.sig"
+    ssh-keygen -Y verify -f "$SIGNERS" -I "$SIGNER" -n "$NAMESPACE" -s "$work/b.sig" \
+        < "$work/b.tar.gz" > /dev/null 2>&1 || die "signature check failed; not installing $name"
+    say "signature ok ($SIGNER)"
+
+    mkdir "$work/x"
+    tar -xzf "$work/b.tar.gz" -C "$work/x" --no-same-owner --no-same-permissions
+    local m="$work/x/manifest.txt"
+    [ -f "$m" ] && [ -d "$work/x/payload" ] || die "bundle has no manifest.txt or payload/"
+    grep -qx "kind=$kind" "$m" && grep -qx "env=$env" "$m" && grep -qx "id=$id" "$m" \
+        || die "manifest does not match the bundle name"
+
+    local cur cur_build
+    cur=$(current_id "$kind" "$env")
+    if [ "$cur" = "$id" ]; then say "$kind $env $id is already live; nothing to do"; return 0; fi
+    cur_build="${cur%%-*}"
+    if [ -n "$cur" ] && [ "$build" -lt "${cur_build:-0}" ]; then
+        die "$id is older than the live $cur; use: enik-deploy rollback $kind $env"
+    fi
+
+    local rel="$base/releases/$env"
+    mkdir -p "$rel"
+    rm -rf "${rel:?}/.$id.partial"
+    mv "$work/x/payload" "$rel/.$id.partial"
+    chown -R root:root "$rel/.$id.partial"
+    chmod -R u=rwX,go=rX "$rel/.$id.partial"
+    cp "$m" "$rel/.$id.partial/.manifest.txt"
+
+    if [ "$kind" = web ]; then
+        [ -f "$rel/.$id.partial/index.html" ] && [ -f "$rel/.$id.partial/canvaskit/canvaskit.wasm" ] \
+            || { rm -rf "${rel:?}/.$id.partial"; die "web bundle lacks index.html or the local engine"; }
+        rm -rf "${rel:?}/$id"
+        mv -T "$rel/.$id.partial" "$rel/$id"
+        switch_to web "$env" "$id"
+        say "web $env is now $id (was ${cur:-nothing})"
+        prune web "$env"
+        rm -f "$src" "$src.sig"
+        return 0
+    fi
+
+    # ── api ──
+    local unit="${env}_calis_bakalim_enik"
+    [ -x "$rel/.$id.partial/CalisBakalimEnik.Api" ] || chmod 0755 "$rel/.$id.partial/CalisBakalimEnik.Api"
+    [ -f "$rel/.$id.partial/migrate.sql" ] || { rm -rf "${rel:?}/.$id.partial"; die "no migrate.sql in the bundle"; }
+    rm -rf "${rel:?}/$id"
+    mv -T "$rel/.$id.partial" "$rel/$id"
+
+    local was_off=no
+    slot_is_off "$env" && was_off=yes
+
+    say "stopping $unit"
+    systemctl stop "$unit"
+
+    # Migrations run as the MIGRATIONS role, never as the app role, which has no
+    # schema rights on purpose. Credentials come from the root-only db.env and
+    # are passed in the environment, never on a command line.
+    if ! (
+        # shellcheck disable=SC1090
+        . "$ETC/$env/db.env"
+        PGPASSWORD="$PGPASSWORD_MIGRATIONS" psql \
+            -h "$PGHOST" -p "$PGPORT" -U "$PGUSER_MIGRATIONS" -d "$PGDATABASE" \
+            -v ON_ERROR_STOP=1 -q -f "$rel/$id/migrate.sql"
+    ); then
+        echo "!! migrations failed; the previous build is still in place" >&2
+        [ "$was_off" = yes ] || restart_api "$env"
+        rm -rf "${rel:?}/$id"
+        exit 1
+    fi
+    say "migrations applied"
+
+    switch_to api "$env" "$id"
+    restart_api "$env"
+    if healthy "$env"; then
+        say "healthy: $(curl -s "http://127.0.0.1:$(port_of "$env")/api/version")"
+        leave_as_found "$env" "$was_off"
+        prune api "$env"
+        rm -f "$src" "$src.sig"
+        return 0
+    fi
+
+    echo "!! $id not healthy after 60 s. Last 30 log lines:" >&2
+    journalctl -u "$unit" -n 30 --no-pager >&2 || true
+    if [ -n "$cur" ] && [ -d "$rel/$cur" ]; then
+        echo "!! switching back to $cur (migrations stay applied)" >&2
+        switch_to api "$env" "$cur"
+        restart_api "$env"
+        healthy "$env" && echo "   $cur is serving again" >&2
+        # Gone, so a later rollback can never land on the build that failed.
+        rm -rf "${rel:?}/$id"
+    fi
+    leave_as_found "$env" "$was_off"
+    exit 1
+}
+
+case "${1:-}" in
+    install)  install_bundle "${2:?bundle file name}" ;;
+    rollback)
+        [[ "${2:-}" =~ ^(api|web)$ && "${3:-}" =~ ^(qa|prod)$ ]] \
+            || die "usage: enik-deploy rollback api|web qa|prod"
+        rollback "$2" "$3" ;;
+    status)   status ;;
+    *) echo "usage: enik-deploy install <bundle> | rollback api|web qa|prod | status" >&2; exit 2 ;;
+esac

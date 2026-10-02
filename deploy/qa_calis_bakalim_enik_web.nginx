@@ -62,8 +62,12 @@ server {
     # helps nobody.
 
     # The bundle's own CSP. The API sends its own, much stricter one for JSON;
-    # this is the page's, and CanvasKit needs wasm-unsafe-eval.
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api-qa.calisbakalimenik.app; frame-ancestors 'none'; base-uri 'self'" always;
+    # this is the page's, and CanvasKit needs wasm-unsafe-eval. On the box it
+    # lives in /etc/nginx/snippets/enik-web-headers-qa.conf, written by
+    # install-slot.sh, which is the source of truth and explains each part,
+    # including why style-src allows 'unsafe-inline' on purpose (B10: Flutter's
+    # engine and the boot screen both use inline <style>).
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://qa-calis-bakalim-enik-api.starlius.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 

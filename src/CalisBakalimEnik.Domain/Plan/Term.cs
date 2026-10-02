@@ -87,4 +87,13 @@ public class FocusSession : OwnedEntity
     /// Deriving it from the timestamps would count every coffee break as study.
     /// </remarks>
     public int FocusSeconds { get; set; }
+
+    /// <summary>
+    /// Set while paused (J76). The timer now runs on the server, so a pause
+    /// survives a reload, a closed tab or another device.
+    /// </summary>
+    public DateTimeOffset? PausedAt { get; set; }
+
+    /// <summary>Paused time already over, not counted as focus.</summary>
+    public int PausedSeconds { get; set; }
 }

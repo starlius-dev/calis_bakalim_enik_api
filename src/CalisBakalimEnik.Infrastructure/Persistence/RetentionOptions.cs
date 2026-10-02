@@ -47,6 +47,27 @@ public sealed class RetentionOptions
     public int SecurityEventDays { get; set; } = 365;
 
     /// <summary>
+    /// How long the anonymised security events of an erased account are kept,
+    /// counted from the erasure: six months, decided 29 Sep 2026 and to be
+    /// stated in the privacy policy.
+    /// </summary>
+    public int ErasedSecurityEventDays { get; set; } = 183;
+
+    /// <summary>
+    /// Previous names and e-mail addresses (J78), counted from the change:
+    /// twelve months, decided 30 Sep 2026 and to be stated in the privacy
+    /// text. Long enough to undo an account takeover noticed late.
+    /// </summary>
+    public int PersonalDetailHistoryDays { get; set; } = 365;
+
+    /// <summary>
+    /// Error reports from the app (D19). Ninety days: enough to see whether a
+    /// fix held across a few releases; short, because a message can carry
+    /// fragments of what the person was doing.
+    /// </summary>
+    public int ClientErrorReportDays { get; set; } = 90;
+
+    /// <summary>
     /// Dead refresh tokens, counted from the later of expiry and revocation.
     /// </summary>
     /// <remarks>

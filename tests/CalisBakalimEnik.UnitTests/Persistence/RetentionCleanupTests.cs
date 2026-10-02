@@ -99,6 +99,9 @@ public class RetentionCleanupTests
         var options = new RetentionOptions
         {
             SecurityEventDays = 0,
+            ErasedSecurityEventDays = 0,
+            PersonalDetailHistoryDays = 0,
+            ClientErrorReportDays = 0,
             RefreshTokenDays = 0,
             ProcessedOutboxDays = 0,
         };

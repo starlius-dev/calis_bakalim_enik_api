@@ -8,13 +8,20 @@ using CalisBakalimEnik.Infrastructure.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
+using CalisBakalimEnik.Application.Common.Localization;
 
 namespace CalisBakalimEnik.Api.Features.Auth;
 
-public sealed record RegisterRequest(string Email, string Password, string? DisplayName);
+/// <param name="Locale">The language the sign-up screen was shown in (J80);
+/// the account starts in it. Anything the API does not speak is Turkish.</param>
+public sealed record RegisterRequest(
+    string Email, string Password, string? DisplayName, string? Locale = null);
 public sealed record ConfirmEmailRequest(string UserId, string Token);
 public sealed record LoginRequest(string Email, string Password);
-public sealed record RefreshRequest(string RefreshToken);
+/// <param name="RefreshToken">Null for a web client that keeps it in the
+/// HttpOnly cookie (B07); the cookie is read instead.</param>
+public sealed record RefreshRequest(string? RefreshToken);
 
 /// <summary>Returned by /login when a second factor is enrolled.</summary>
 public sealed record MfaRequiredResponse(
@@ -22,10 +29,12 @@ public sealed record MfaRequiredResponse(
     Guid ChallengeId,
     IReadOnlyCollection<FactorResponse> Factors);
 
+/// <param name="RefreshToken">Null for a web client that asked for the
+/// HttpOnly cookie (B07): it is in the cookie, never in the body.</param>
 public sealed record TokenResponse(
     string AccessToken,
     DateTimeOffset AccessExpiresAt,
-    string RefreshToken,
+    string? RefreshToken,
     DateTimeOffset RefreshExpiresAt);
 
 public sealed record MeResponse(
@@ -35,7 +44,10 @@ public sealed record MeResponse(
     string Locale,
     string TimeZone,
     IReadOnlyCollection<string> Roles,
-    IReadOnlyCollection<string> Permissions);
+    IReadOnlyCollection<string> Permissions,
+    // Set while a deletion is pending (D15); the client shows the cancel
+    // screen instead of the app.
+    DateTimeOffset? DeletionScheduledFor = null);
 
 public sealed record UpdateMeRequest(
     string? DisplayName,
@@ -93,16 +105,10 @@ public static class AuthEndpoints
 
         if (existing is not null)
         {
+            var attempt = AuthEmails.RegisterAttempt(
+                existing.Locale, EmailLinks.ForgotPassword(links.Value));
             await SendQuietlyAsync(email, logger, request.Email,
-                "Çalış Bakalım Enik: kayıt denemesi",
-                $"""
-                 Bu adresle zaten bir hesap var, bu yüzden yeni bir hesap açmadık.
-
-                 Şifreni hatırlamıyorsan buradan sıfırlayabilirsin:
-
-                 {EmailLinks.ForgotPassword(links.Value)}
-                 """,
-                ct);
+                attempt.Subject, attempt.Body, ct);
 
             logger.LogInformation("Registration attempted for an existing address");
             return Results.NoContent();
@@ -131,6 +137,7 @@ public static class AuthEndpoints
             UserName = request.Email,
             Email = request.Email,
             DisplayName = displayName,
+            Locale = Texts.Language(request.Locale),
             Status = UserStatus.PendingConfirmation,
             CreatedAt = clock.UtcNow,
         };
@@ -152,18 +159,9 @@ public static class AuthEndpoints
 
         var token = await users.GenerateEmailConfirmationTokenAsync(user);
 
-        await SendQuietlyAsync(email, logger, request.Email,
-            "Çalış Bakalım Enik: e-postanı doğrula",
-            $"""
-             Merhaba {user.DisplayName},
-
-             Hesabını açmak için son bir adım kaldı. Aşağıdaki bağlantıya tıkla:
-
-             {EmailLinks.ConfirmEmail(links.Value, user.Id, token)}
-
-             Bağlantı 24 saat geçerli.
-             """,
-            ct);
+        var confirm = AuthEmails.ConfirmEmail(
+            user.Locale, user.DisplayName, EmailLinks.ConfirmEmail(links.Value, user.Id, token));
+        await SendQuietlyAsync(email, logger, request.Email, confirm.Subject, confirm.Body, ct);
 
         return Results.NoContent();
     }
@@ -368,10 +366,10 @@ public static class AuthEndpoints
 
         var pair = await auth.IssueAsync(user, ContextFrom(http), mfaSatisfied: false, ct);
 
-        return Results.Ok(ToResponse(pair));
+        return Results.Ok(RefreshCookie.Issue(http, ToResponse(pair)));
     }
 
-    private static IResult Locked(LockoutState state, HttpContext http)
+    internal static IResult Locked(LockoutState state, HttpContext http)
     {
         var seconds = (int)Math.Ceiling(state.RetryAfter?.TotalSeconds ?? 60);
         http.Response.Headers.RetryAfter = seconds.ToString();
@@ -379,32 +377,46 @@ public static class AuthEndpoints
         return Problem(
             new Application.Common.Models.Error(
                 "auth.locked",
-                $"Çok fazla deneme. {seconds / 60} dk {seconds % 60} sn sonra tekrar dene."),
+                T("Çok fazla deneme. {0} dk {1} sn sonra tekrar dene.", seconds / 60, seconds % 60)),
             StatusCodes.Status423Locked,
             http);
     }
 
     private static async Task<IResult> RefreshAsync(
-        RefreshRequest request,
+        RefreshRequest? request,
         AuthService auth,
         HttpContext http,
         CancellationToken ct)
     {
-        var result = await auth.RefreshAsync(request.RefreshToken, ContextFrom(http), ct);
+        // The body for the phone apps, the HttpOnly cookie for the web (B07).
+        var token = request?.RefreshToken ?? RefreshCookie.Read(http);
+        if (string.IsNullOrWhiteSpace(token))
+            return Problem(AuthErrors.InvalidRefreshToken, StatusCodes.Status401Unauthorized, http);
 
-        return result.Succeeded
-            ? Results.Ok(ToResponse(result.Value))
-            : Problem(result.Error, StatusCodes.Status401Unauthorized, http);
+        var result = await auth.RefreshAsync(token, ContextFrom(http), ct);
+
+        if (!result.Succeeded)
+        {
+            // A dead cookie is dropped, so the browser stops offering it.
+            if (RefreshCookie.Wanted(http)) RefreshCookie.Clear(http);
+            return Problem(result.Error, StatusCodes.Status401Unauthorized, http);
+        }
+
+        return Results.Ok(RefreshCookie.Issue(http, ToResponse(result.Value)));
     }
 
     private static async Task<IResult> LogoutAsync(
-        RefreshRequest request,
+        RefreshRequest? request,
         AuthService auth,
         ITokenService tokens,
         ClaimsPrincipal principal,
+        HttpContext http,
         CancellationToken ct)
     {
-        await auth.RevokeAsync(request.RefreshToken, RefreshRevokedReason.Logout, ct);
+        var token = request?.RefreshToken ?? RefreshCookie.Read(http);
+        if (!string.IsNullOrWhiteSpace(token))
+            await auth.RevokeAsync(token, RefreshRevokedReason.Logout, ct);
+        RefreshCookie.Clear(http);
         await DenylistCurrentAccessTokenAsync(tokens, principal, ct);
 
         return Results.NoContent();
@@ -454,7 +466,8 @@ public static class AuthEndpoints
             user.Locale,
             user.TimeZone,
             roles.ToArray(),
-            currentUser.Permissions));
+            currentUser.Permissions,
+            user.DeletionScheduledAt));
     }
 
     /// <summary>
@@ -484,28 +497,23 @@ public static class AuthEndpoints
         var user = await users.FindByIdAsync(userId.Value.ToString());
         if (user is null) return Results.Unauthorized();
 
-        if (request.DisplayName is { } name)
+        // The name moved behind the step-up with the e-mail address (J78):
+        // PATCH /account/details. Sending the current name is harmless.
+        if (request.DisplayName is { } name && name.Trim() != user.DisplayName)
         {
-            var trimmed = name.Trim();
-
-            if (trimmed.Length is < 2 or > 100)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
             {
-                return Results.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["displayName"] = ["Ad 2 ile 100 karakter arasında olmalı."],
-                });
-            }
-
-            user.DisplayName = trimmed;
+                ["displayName"] = ["Adını Profil > Kişisel bilgiler bölümünden değiştirebilirsin."],
+            });
         }
 
         if (request.Locale is { } locale)
         {
-            if (locale is not ("tr" or "en"))
+            if (!Texts.Languages.Contains(locale))
             {
                 return Results.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["locale"] = ["Desteklenen diller: tr, en."],
+                    ["locale"] = [Texts.T("Desteklenen diller: {0}.", string.Join(", ", Texts.Languages))],
                 });
             }
 
@@ -547,7 +555,8 @@ public static class AuthEndpoints
             user.Locale,
             user.TimeZone,
             roles.ToArray(),
-            currentUser.Permissions));
+            currentUser.Permissions,
+            user.DeletionScheduledAt));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -580,10 +589,7 @@ public static class AuthEndpoints
         await tokens.DenylistAsync(jti, DateTimeOffset.FromUnixTimeSeconds(exp), ct);
     }
 
-    private static AuthContext ContextFrom(HttpContext http) => new(
-        ClientIp(http),
-        http.Request.Headers.UserAgent.ToString(),
-        DeviceId: null);
+    private static AuthContext ContextFrom(HttpContext http) => MfaEndpoints.ContextFrom(http);
 
     /// <summary>
     /// The vetted client address. See <see cref="ClientAddress"/>.

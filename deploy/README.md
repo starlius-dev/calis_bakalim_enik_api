@@ -1,6 +1,54 @@
 # deploy/
 
-Everything needed to stand the QA slot up, and nothing that holds a secret.
+Everything needed to stand the slots up and ship to them, and nothing that holds a
+secret.
+
+## Shipping a build (since October 2026)
+
+One command from the dev machine, in Git Bash:
+
+```
+bash deploy/deploy.sh qa                 # API, then the web app (from ../../Flutter/calis_bakalim_enik)
+bash deploy/deploy.sh prod               # the same; you type the version to confirm
+bash deploy/deploy.sh qa api             # one half only (or: web)
+bash deploy/deploy.sh rollback qa api    # back to the previous release (or: web)
+bash deploy/deploy.sh status
+```
+
+Each half builds, packs the build with a `manifest.txt` into one `.tar.gz`, **signs it
+with the laptop's SSH key** (`ssh-keygen -Y sign`, namespace `enik-deploy`), uploads it
+to `/var/lib/enik-deploy/incoming/` and runs `sudo -n /usr/local/sbin/enik-deploy install`.
+No sudo password: servrinuse may run that one program, and the program installs only
+bundles whose signature checks against `/etc/calis_bakalim_enik/deploy-signers`.
+Whoever gets hold of servrinuse can upload anything but cannot sign it.
+
+On the server (`server/enik-deploy`), every build goes into its own release folder and
+a symlink names the live one, switched with a single `rename(2)`. A power cut at any
+moment leaves either the old build or the new one live, never half of each (H54):
+
+    /var/www/calis_bakalim_enik_api/releases/<env>/<build>-<sha>/   root-owned
+    /var/www/calis_bakalim_enik_api/<env> -> releases/<env>/<id>
+    /var/www/calis_bakalim_enik/releases/<env>/<build>-<sha>/       web, root-owned
+    /var/www/calis_bakalim_enik/<env> -> releases/<env>/<id>
+
+API: stop, migrate as the migrations role, switch, start, wait for
+`/api/health/ready`; an unhealthy build is switched back automatically and removed
+(migrations stay; they are additive by rule). An older build than the live one is
+refused, use `rollback`. Five releases are kept per slot.
+
+The API runs as its own user `enik` (I56). Its settings are in
+`/etc/calis_bakalim_enik/<env>/api.env` and the migrations role's in `.../db.env`, both
+root 0600. `server/install-enik-isolation.sh` moved the box to this layout once; it
+also wrote the units (`qa_calis_bakalim_enik.service` here is a reading copy).
+
+`finish-first-deploy.sh` and the staging folders are gone. Backups are no longer
+Enik's own: the server-wide `server-backup` job covers every project (HOME-SERVER.md §12).
+
+## First setup of a slot (history)
+
+What follows is how the slots were first stood up in September 2026. `install-slot.sh`
+still describes the database, roles, nginx sites and env keys, but the unit it writes
+predates the `enik` user and the release folders.
 
 The **internal test release runs in the QA slot**, not a new one. `DEPLOYMENT.md` §0
 already defines prod (`3010`) and qa (`3011`) with matching databases, roles, unit names

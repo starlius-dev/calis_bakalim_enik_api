@@ -14,7 +14,13 @@ namespace CalisBakalimEnik.Infrastructure.Persistence;
 /// interpolated into SQL, which is only safe because of that.</param>
 /// <param name="Predicate">What makes a row prunable, in terms of
 /// <c>@cutoff</c>.</param>
-public readonly record struct RetentionRule(string Name, string Table, string Predicate, int Days);
+/// <param name="DropPartitions">
+/// Whether whole aged-out months may be dropped for this rule. False for a rule
+/// that only covers SOME rows of a partitioned table: dropping a month there
+/// would take every other row in it too.
+/// </param>
+public readonly record struct RetentionRule(
+    string Name, string Table, string Predicate, int Days, bool DropPartitions = true);
 
 /// <summary>
 /// Deletes what has aged out — docs/DATABASE.md §6.
@@ -143,11 +149,24 @@ public sealed class RetentionCleanup(
         new("security events", "security_events",
             "occurred_at < @cutoff", o.SecurityEventDays),
 
+        // The anonymised trail of an erased account (UserDataMap), aged from
+        // the erasure, not from when the event happened. Row-by-row only: the
+        // same months hold everyone else's events.
+        new("security events of erased accounts", "security_events",
+            "detail ? 'erasedAt' AND (detail->>'erasedAt')::timestamptz < @cutoff",
+            o.ErasedSecurityEventDays, DropPartitions: false),
+
         // Both conditions, not either: a revoked token with a future expiry is
         // exactly the row reuse detection needs to find. See RetentionOptions.
         new("refresh tokens", "refresh_tokens",
             "expires_at < @cutoff AND COALESCE(revoked_at, expires_at) < @cutoff",
             o.RefreshTokenDays),
+
+        new("previous names and e-mail addresses", "personal_detail_changes",
+            "changed_at < @cutoff", o.PersonalDetailHistoryDays),
+
+        new("app error reports", "client_error_reports",
+            "received_at < @cutoff", o.ClientErrorReportDays),
 
         new("processed outbox messages", "outbox_messages",
             "processed_at IS NOT NULL AND processed_at < @cutoff",
@@ -179,7 +198,7 @@ public sealed class RetentionCleanup(
             // writes a WAL record per row, and leaves the space occupied until
             // VACUUM catches up. At the scale this table reaches with real
             // users that is the difference between a moment and an hour.
-            if (PartitionOptions.Partitioned.Contains(rule.Table))
+            if (rule.DropPartitions && PartitionOptions.Partitioned.Contains(rule.Table))
                 await DropAgedPartitionsAsync(db, rule.Table, cutoff, ct);
 
             // Still swept afterwards, and not as a belt-and-braces gesture:

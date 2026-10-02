@@ -115,18 +115,9 @@ public static class AccountSecurityEndpoints
 
             try
             {
-                await email.SendAsync(
-                    request.Email,
-                    "Çalış Bakalım Enik: şifre sıfırlama",
-                    $"""
-                     Şifreni sıfırlamak için aşağıdaki bağlantıya tıkla:
-
-                     {EmailLinks.ResetPassword(links.Value, user.Id, token)}
-
-                     Bağlantı 30 dakika geçerli. Bu isteği sen yapmadıysan
-                     hiçbir şey yapmana gerek yok. Şifren değişmedi.
-                     """,
-                    ct);
+                var reset = AuthEmails.ResetPassword(
+                    user.Locale, EmailLinks.ResetPassword(links.Value, user.Id, token));
+                await email.SendAsync(request.Email, reset.Subject, reset.Body, ct);
             }
             catch (Exception e)
             {

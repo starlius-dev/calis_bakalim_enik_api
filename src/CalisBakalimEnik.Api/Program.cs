@@ -1,5 +1,6 @@
 using System.Net;
 using CalisBakalimEnik.Api.Extensions;
+using CalisBakalimEnik.Api.Features.Account;
 using CalisBakalimEnik.Api.Features.Admin;
 using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Api.Features.Content;
@@ -113,6 +114,7 @@ app.UseMiddleware<CorrelationIdMiddleware>();
 
 // Before authentication: a client that is too old should be told to update,
 // not told its token is bad. Inert until Client:MinimumVersion is set.
+app.UseMiddleware<LanguageMiddleware>();
 app.UseMiddleware<ClientVersionMiddleware>();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseRequestLogging();
@@ -189,6 +191,7 @@ if (!app.Environment.IsDevelopment())
 // docs/ARCHITECTURE.md §2.
 app.UseAuthentication();
 app.UseMiddleware<JwtDenylistMiddleware>();
+app.UseMiddleware<DeletionPendingMiddleware>();
 
 // After authentication so the budget is partitioned by the real user, and
 // before authorization so a flood of forbidden requests is still metered.
@@ -203,9 +206,12 @@ app.UseAuthorization();
 var api = app.MapGroup("").CompleteProblemDetails();
 
 api.MapSystemEndpoints();
+api.MapClientErrorEndpoints();
 api.MapAuthEndpoints();
 api.MapMfaEndpoints();
 api.MapAccountSecurityEndpoints();
+api.MapAccountDataEndpoints();
+api.MapPersonalDetailsEndpoints();
 api.MapNotificationEndpoints();
 api.MapDeviceEndpoints();
 api.MapTaskEndpoints();

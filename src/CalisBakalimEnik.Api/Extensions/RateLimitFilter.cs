@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using CalisBakalimEnik.Infrastructure.Identity;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Extensions;
 
@@ -38,8 +39,8 @@ public sealed class RateLimitFilter(RateLimitGuard guard, RateLimitPolicy policy
         }
 
         return Results.Problem(
-            title: "Çok fazla istek",
-            detail: "Çok hızlı denedin. Biraz bekleyip tekrar dene.",
+            title: T("Çok fazla istek"),
+            detail: T("Çok hızlı denedin. Biraz bekleyip tekrar dene."),
             statusCode: StatusCodes.Status429TooManyRequests);
     }
 

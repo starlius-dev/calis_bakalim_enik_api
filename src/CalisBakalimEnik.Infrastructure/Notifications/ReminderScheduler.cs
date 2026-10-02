@@ -1,5 +1,7 @@
 using CalisBakalimEnik.Application.Common.Interfaces;
+using CalisBakalimEnik.Domain.Health;
 using CalisBakalimEnik.Domain.Notifications;
+using CalisBakalimEnik.Infrastructure.Health;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -70,14 +72,72 @@ public sealed class ReminderScheduler(
 
         if (due.Count == 0) return;
 
+        // A dose reminder whose dose was handled or no longer exists has
+        // nothing to say (J65). Dropping it on marking the dose covers the
+        // usual case; this covers everything else, including reminders
+        // written before they carried the dose's id.
+        var doseIds = due
+            .Where(n => n.EntityType == MedicationDoseService.DoseEntity && n.EntityId != null)
+            .Select(n => n.EntityId!.Value)
+            .Distinct()
+            .ToList();
+
+        var statuses = doseIds.Count == 0
+            ? new Dictionary<Guid, DoseStatus>()
+            : await db.MedicationDoses.IgnoreQueryFilters()
+                .Where(d => doseIds.Contains(d.Id))
+                .ToDictionaryAsync(d => d.Id, d => d.Status, ct);
+
+        var legacy = doseIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await db.Medications.IgnoreQueryFilters()
+                .Where(m => doseIds.Contains(m.Id) && m.DeletedAt == null)
+                .Select(m => m.Id)
+                .ToListAsync(ct)).ToHashSet();
+
+        var queued = 0;
+        var dropped = 0;
+
         foreach (var notification in due)
         {
+            var isDoseReminder = notification.EntityType == MedicationDoseService.DoseEntity
+                                 && notification.EntityId is not null;
+
+            if (isDoseReminder && !ShouldSendDoseReminder(
+                    statuses.TryGetValue(notification.EntityId!.Value, out var status) ? status : null,
+                    legacy.Contains(notification.EntityId!.Value)))
+            {
+                db.Notifications.Remove(notification);
+                dropped++;
+                continue;
+            }
+
             db.OutboxMessages.Add(NotificationService.Dispatch(notification, now));
             notification.QueuedAt = now;
+            queued++;
         }
 
         await db.SaveChangesAsync(ct);
 
-        logger.LogInformation("Queued {Count} due reminders", due.Count);
+        logger.LogInformation(
+            "Queued {Count} due reminders, dropped {Dropped} for doses already handled",
+            queued, dropped);
     }
+
+    /// <summary>
+    /// Whether a due dose reminder still has something to say.
+    /// </summary>
+    /// <param name="status">The dose's status, or null when no such dose exists.</param>
+    /// <param name="legacyMedication">
+    /// The reminder's id is a live medication's: written before 30 Sep 2026,
+    /// when reminders carried the medication id. Its dose cannot be told apart,
+    /// so it is sent as it always was.
+    /// </param>
+    public static bool ShouldSendDoseReminder(DoseStatus? status, bool legacyMedication) =>
+        status switch
+        {
+            DoseStatus.Pending => true,
+            null => legacyMedication,
+            _ => false,
+        };
 }

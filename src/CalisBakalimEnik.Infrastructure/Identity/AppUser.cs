@@ -38,4 +38,17 @@ public class AppUser : IdentityUser<Guid>
 
     /// <summary>Soft delete; a purge job destroys the rows after a grace window.</summary>
     public DateTimeOffset? DeletedAt { get; set; }
+
+    /// <summary>
+    /// When the owner asked for the account to be erased, the moment it will
+    /// be. Null for a normal account.
+    /// </summary>
+    /// <remarks>
+    /// While set, the account can still sign in (password and second factor as
+    /// usual) but every token carries a <c>del</c> claim and
+    /// <c>DeletionPendingMiddleware</c> refuses everything except cancelling,
+    /// exporting and signing out. <c>AccountErasureJob</c> erases it once this
+    /// passes. See Features/Account.
+    /// </remarks>
+    public DateTimeOffset? DeletionScheduledAt { get; set; }
 }

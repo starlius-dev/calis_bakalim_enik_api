@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Infrastructure.Identity;
 
@@ -35,7 +36,7 @@ public sealed class TurkishIdentityErrorDescriber : IdentityErrorDescriber
     public override IdentityError PasswordTooShort(int length) => new()
     {
         Code = nameof(PasswordTooShort),
-        Description = $"Şifre en az {length} karakter olmalı.",
+        Description = T("Şifre en az {0} karakter olmalı.", length),
     };
 
     public override IdentityError PasswordRequiresUpper() => new()
@@ -65,7 +66,7 @@ public sealed class TurkishIdentityErrorDescriber : IdentityErrorDescriber
     public override IdentityError PasswordRequiresUniqueChars(int uniqueChars) => new()
     {
         Code = nameof(PasswordRequiresUniqueChars),
-        Description = $"Şifre en az {uniqueChars} farklı karakter içermeli.",
+        Description = T("Şifre en az {0} farklı karakter içermeli.", uniqueChars),
     };
 
     public override IdentityError InvalidEmail(string? email) => new()

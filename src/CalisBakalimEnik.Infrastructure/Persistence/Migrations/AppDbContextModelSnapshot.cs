@@ -282,6 +282,10 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                         .HasColumnType("date")
                         .HasColumnName("due_on");
 
+                    b.Property<DateOnly?>("FinishedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("finished_on");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -326,6 +330,155 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_projects_progress", "progress_pct BETWEEN 0 AND 100");
                         });
+                });
+
+            modelBuilder.Entity("CalisBakalimEnik.Domain.Content.ProjectChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("field");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("new_value");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("old_value");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_project_changes");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("ix_project_changes_project_id");
+
+                    b.HasIndex("OwnerId", "ProjectId", "ChangedAt")
+                        .HasDatabaseName("ix_project_changes_project");
+
+                    b.ToTable("project_changes", (string)null);
+                });
+
+            modelBuilder.Entity("CalisBakalimEnik.Domain.Diagnostics.ClientErrorReport", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AppVersion")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("app_version");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<Guid?>("InstallationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("installation_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Locale")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("locale");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("platform");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<string>("Route")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("route");
+
+                    b.Property<string>("Stack")
+                        .HasMaxLength(12000)
+                        .HasColumnType("character varying(12000)")
+                        .HasColumnName("stack");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("user_agent");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_client_error_reports");
+
+                    b.HasIndex("ReceivedAt")
+                        .HasDatabaseName("ix_client_error_reports_received_at");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_client_error_reports_user_id");
+
+                    b.ToTable("client_error_reports", (string)null);
                 });
 
             modelBuilder.Entity("CalisBakalimEnik.Domain.Health.BodyMeasurement", b =>
@@ -786,6 +939,14 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
 
+                    b.Property<short?>("PreviousStatus")
+                        .HasColumnType("smallint")
+                        .HasColumnName("previous_status");
+
+                    b.Property<DateTimeOffset?>("PreviousTakenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("previous_taken_at");
+
                     b.Property<DateTimeOffset>("ScheduledAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("scheduled_at");
@@ -793,6 +954,10 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                     b.Property<short>("Status")
                         .HasColumnType("smallint")
                         .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("StatusChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("status_changed_at");
 
                     b.Property<DateTimeOffset?>("TakenAt")
                         .HasColumnType("timestamp with time zone")
@@ -1236,6 +1401,49 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                     b.ToTable("mfa_recovery_codes", (string)null);
                 });
 
+            modelBuilder.Entity("CalisBakalimEnik.Domain.Identity.PersonalDetailChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("field");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("new_value");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("old_value");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_personal_detail_changes");
+
+                    b.HasIndex("ChangedAt")
+                        .HasDatabaseName("ix_personal_detail_changes_changed_at");
+
+                    b.HasIndex("UserId", "ChangedAt")
+                        .HasDatabaseName("ix_personal_detail_changes_user");
+
+                    b.ToTable("personal_detail_changes", (string)null);
+                });
+
             modelBuilder.Entity("CalisBakalimEnik.Domain.Identity.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1259,6 +1467,11 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("FamilyId")
                         .HasColumnType("uuid")
                         .HasColumnName("family_id");
+
+                    b.Property<string>("InstallationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("installation_id");
 
                     b.Property<DateTimeOffset>("IssuedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1624,6 +1837,14 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
 
+                    b.Property<DateTimeOffset?>("PausedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paused_at");
+
+                    b.Property<int>("PausedSeconds")
+                        .HasColumnType("integer")
+                        .HasColumnName("paused_seconds");
+
                     b.Property<short>("PlannedBlocks")
                         .HasColumnType("smallint")
                         .HasColumnName("planned_blocks");
@@ -1977,6 +2198,10 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deleted_at");
 
+                    b.Property<DateTimeOffset?>("DeletionScheduledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deletion_scheduled_at");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -2248,6 +2473,16 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_projects_courses_course_id");
                 });
 
+            modelBuilder.Entity("CalisBakalimEnik.Domain.Content.ProjectChange", b =>
+                {
+                    b.HasOne("CalisBakalimEnik.Domain.Content.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_project_changes_projects_project_id");
+                });
+
             modelBuilder.Entity("CalisBakalimEnik.Domain.Health.Exercise", b =>
                 {
                     b.HasOne("CalisBakalimEnik.Infrastructure.Identity.AppUser", null)
@@ -2384,6 +2619,16 @@ namespace CalisBakalimEnik.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_mfa_recovery_codes_users_user_id");
+                });
+
+            modelBuilder.Entity("CalisBakalimEnik.Domain.Identity.PersonalDetailChange", b =>
+                {
+                    b.HasOne("CalisBakalimEnik.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_personal_detail_changes_users_user_id");
                 });
 
             modelBuilder.Entity("CalisBakalimEnik.Domain.Identity.RefreshToken", b =>

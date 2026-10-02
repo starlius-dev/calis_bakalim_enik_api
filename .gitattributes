@@ -13,3 +13,5 @@
 *.png       binary
 *.jpg       binary
 *.ttf       binary
+# The server-side deploy program and its signer list have no extension.
+deploy/server/*  text eol=lf

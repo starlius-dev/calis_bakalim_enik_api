@@ -5,6 +5,7 @@ using CalisBakalimEnik.Api.Features.Auth;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Domain.Content;
 using CalisBakalimEnik.Domain.Notifications;
+using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using CalisBakalimEnik.Infrastructure.Plan;
 using Microsoft.EntityFrameworkCore;
@@ -25,11 +26,15 @@ public sealed record ProjectRequest(
     Guid? CourseId,
     DateOnly? StartsOn,
     DateOnly? DueOn,
-    short? ProgressPct);
+    short? ProgressPct,
+    DateOnly? FinishedOn = null);
 
 public sealed record ProjectResponse(
     Guid Id, string Name, string? Description, string Status, Guid? CourseId,
-    DateOnly? StartsOn, DateOnly? DueOn, short ProgressPct);
+    DateOnly? StartsOn, DateOnly? DueOn, short ProgressPct, DateOnly? FinishedOn);
+
+public sealed record ProjectChangeResponse(
+    DateTimeOffset ChangedAt, string Field, string? OldValue, string? NewValue);
 
 public sealed record EventRequest(
     string Title,
@@ -85,6 +90,7 @@ public static partial class ContentEndpoints
         projects.MapPost("/", CreateProjectAsync);
         projects.MapPatch("/{id:guid}", UpdateProjectAsync);
         projects.MapDelete("/{id:guid}", DeleteProjectAsync);
+        projects.MapGet("/{id:guid}/history", ProjectHistoryAsync);
 
         var events = app.MapGroup("/api/v1/events").WithTags("Content").RequireAuthorization();
         events.MapGet("/", ListEventsAsync);
@@ -296,10 +302,12 @@ public static partial class ContentEndpoints
     private static async Task<IResult> CreateProjectAsync(
         ProjectRequest request,
         AppDbContext db,
+        IClock clock,
         ClaimsPrincipal principal,
         CancellationToken ct)
     {
-        if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
+        var userId = MfaEndpoints.UserId(principal);
+        if (userId is null) return Results.Unauthorized();
 
         if (string.IsNullOrWhiteSpace(request.Name))
             return Missing("name", "Proje adı boş olamaz.");
@@ -321,10 +329,14 @@ public static partial class ContentEndpoints
             CourseId = request.CourseId,
             StartsOn = request.StartsOn,
             DueOn = request.DueOn,
+            FinishedOn = request.FinishedOn,
             ProgressPct = Clamp(request.ProgressPct),
         };
 
+        await ApplyRulesAsync(project, db, userId.Value, clock, ct);
+
         db.Projects.Add(project);
+        Record(db, project.Id, clock, "created", null, project.Name);
         await db.SaveChangesAsync(ct);
 
         return Results.Created($"/api/v1/projects/{project.Id}", Describe(project));
@@ -334,13 +346,17 @@ public static partial class ContentEndpoints
         Guid id,
         ProjectRequest request,
         AppDbContext db,
+        IClock clock,
         ClaimsPrincipal principal,
         CancellationToken ct)
     {
-        if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
+        var userId = MfaEndpoints.UserId(principal);
+        if (userId is null) return Results.Unauthorized();
 
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (project is null) return Results.NotFound();
+
+        var before = ProjectSnapshot.Of(project);
 
         if (!TryParse(request.Status, out ProjectStatus status))
             return Missing("status", "NotStarted, InProgress veya Done olmalı.");
@@ -351,12 +367,18 @@ public static partial class ContentEndpoints
         project.CourseId = request.CourseId;
         project.StartsOn = request.StartsOn;
         project.DueOn = request.DueOn;
+        project.FinishedOn = request.FinishedOn;
         if (request.ProgressPct is not null) project.ProgressPct = Clamp(request.ProgressPct);
 
         // Finishing a project fills its bar: a "Done" project sitting at 40%
         // is the kind of contradiction the user has to fix by hand otherwise.
         if (project.Status == ProjectStatus.Done && request.ProgressPct is null)
             project.ProgressPct = 100;
+
+        await ApplyRulesAsync(project, db, userId.Value, clock, ct);
+
+        foreach (var (field, old, @new) in ProjectRules.Diff(before, ProjectSnapshot.Of(project)))
+            Record(db, project.Id, clock, field, old, @new);
 
         await db.SaveChangesAsync(ct);
 
@@ -372,17 +394,61 @@ public static partial class ContentEndpoints
         if (project is null) return Results.NotFound();
 
         project.DeletedAt = clock.UtcNow;
+        Record(db, project.Id, clock, "deleted", project.Name, null);
         await db.SaveChangesAsync(ct);
 
         return Results.NoContent();
     }
+
+    /// <summary>A project's history, newest first (J83).</summary>
+    private static async Task<IResult> ProjectHistoryAsync(
+        Guid id, AppDbContext db, ClaimsPrincipal principal, CancellationToken ct)
+    {
+        if (MfaEndpoints.UserId(principal) is null) return Results.Unauthorized();
+
+        // Owned rows, so the query filter already limits this to the caller;
+        // someone else's project id simply has no history here.
+        if (!await db.Projects.AnyAsync(p => p.Id == id, ct)) return Results.NotFound();
+
+        var changes = await db.ProjectChanges
+            .Where(c => c.ProjectId == id)
+            .OrderByDescending(c => c.ChangedAt)
+            .ThenByDescending(c => c.Id)
+            .Take(ListLimits.Ceiling)
+            .Select(c => new ProjectChangeResponse(c.ChangedAt, c.Field, c.OldValue, c.NewValue))
+            .ToListAsync(ct);
+
+        return Results.Ok(changes);
+    }
+
+    /// <summary>Status and dates follow progress (J82, J83).</summary>
+    private static async Task ApplyRulesAsync(
+        Project project, AppDbContext db, Guid userId, IClock clock, CancellationToken ct)
+    {
+        project.Status = ProjectRules.Normalise(project.Status, project.ProgressPct);
+
+        var today = await UserDate.TodayAsync(db, userId, clock, ct);
+        (project.StartsOn, project.FinishedOn) =
+            ProjectRules.Dates(project.Status, project.StartsOn, project.FinishedOn, today);
+    }
+
+    private static void Record(
+        AppDbContext db, Guid projectId, IClock clock, string field, string? old, string? @new) =>
+        db.ProjectChanges.Add(new ProjectChange
+        {
+            ProjectId = projectId,
+            ChangedAt = clock.UtcNow,
+            Field = field,
+            OldValue = old,
+            NewValue = @new,
+        });
 
     private static short Clamp(short? value) =>
         value is null ? (short)0 : Math.Clamp(value.Value, (short)0, (short)100);
 
     private static ProjectResponse Describe(Project p) => new(
         p.Id, p.Name, p.Description, p.Status.ToString(), p.CourseId,
-        p.StartsOn, p.DueOn, p.ProgressPct);
+        p.StartsOn, p.DueOn, p.ProgressPct, p.FinishedOn);
 
     // ── events ───────────────────────────────────────────────────────────
 
@@ -512,6 +578,7 @@ public static partial class ContentEndpoints
         Event item, Guid ownerId, ReminderSync reminders, CancellationToken ct)
     {
         var zone = await reminders.ZoneOfAsync(ownerId, ct);
+        var language = await reminders.LanguageOfAsync(ownerId, ct);
 
         await reminders.SyncAsync(
             "event",
@@ -520,7 +587,7 @@ public static partial class ContentEndpoints
             NotificationType.EventSoon,
             item.Title,
             ReminderSync.DueBody(
-                item.StartsAt, item.ReminderAt ?? item.StartsAt, zone),
+                item.StartsAt, item.ReminderAt ?? item.StartsAt, zone, language),
             $"/etkinlikler/{item.Id}",
             item.ReminderAt,
             ct);

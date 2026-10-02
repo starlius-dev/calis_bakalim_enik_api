@@ -51,8 +51,12 @@ for role in "$ROLE_MIG" "$ROLE_APP"; do
         echo "==> role $role already exists — password left alone"
     else
         pw="$(openssl rand -base64 33 | tr -d '\n/+=' | cut -c1-32)"
-        sudo -u postgres psql -v ON_ERROR_STOP=1 -q \
-            -c "CREATE ROLE \"$role\" LOGIN PASSWORD '$pw'"
+        # On stdin, never in -c: sudo logs every argument to auth.log and the
+        # journal, which is how the first run of this script left all six
+        # passwords readable by anyone in the adm group.
+        sudo -u postgres psql -v ON_ERROR_STOP=1 -q <<SQL
+CREATE ROLE "$role" LOGIN PASSWORD '$pw';
+SQL
         echo "==> role $role created"
         if [ "$role" = "$ROLE_MIG" ]; then PW_MIG="$pw"; else PW_APP="$pw"; fi
         NEW_SECRETS=1

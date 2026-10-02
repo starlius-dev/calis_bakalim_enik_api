@@ -6,6 +6,7 @@ using CalisBakalimEnik.Domain.Plan;
 using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Features.Plan;
 
@@ -118,7 +119,7 @@ public static class StatsEndpoints
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["from"] = [$"Aralık en fazla {MaxWindowDays} gün olabilir."],
+                ["from"] = [T("Aralık en fazla {0} gün olabilir.", MaxWindowDays)],
             });
         }
 

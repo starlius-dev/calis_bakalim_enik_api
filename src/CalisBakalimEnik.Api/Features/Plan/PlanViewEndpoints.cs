@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using CalisBakalimEnik.Api.Features.Auth;
+using CalisBakalimEnik.Api.Features.Notifications;
 using CalisBakalimEnik.Application.Common.Interfaces;
 using CalisBakalimEnik.Infrastructure.Identity;
 using CalisBakalimEnik.Infrastructure.Notifications;
@@ -13,7 +14,23 @@ public sealed record AgendaResponse(
     DateOnly From,
     DateOnly To,
     string TimeZone,
-    IReadOnlyList<AgendaOccurrence> Occurrences);
+    IReadOnlyList<AgendaOccurrence> Occurrences,
+    // One-off events (an exam, a presentation) in the window, J73. The week
+    // page used to be built from the timetable alone and never showed them.
+    IReadOnlyList<AgendaEvent>? Events = null);
+
+/// <summary>An event on its local day; times are null when it is all-day.</summary>
+public sealed record AgendaEvent(
+    Guid Id,
+    Guid? CourseId,
+    DateOnly Date,
+    TimeOnly? StartsAt,
+    TimeOnly? EndsAt,
+    DateTimeOffset StartsAtUtc,
+    bool AllDay,
+    string Type,
+    string Title,
+    string? Location);
 
 public sealed record DashboardResponse(
     DateOnly Date,
@@ -69,8 +86,39 @@ public static partial class PlanEndpointsViews
             .Where(e => e.ValidFrom <= end && (e.ValidTo == null || e.ValidTo >= start))
             .ToListAsync(ct);
 
+        // Events are stored as instants; the day and the wall-clock times are
+        // the user's, like everything else on the page. Recurring events are
+        // shown on their first date only: nothing creates them yet.
+        var windowStart = UserDate.StartOfLocalDay(start, zone);
+        var windowEnd = UserDate.EndOfLocalDay(end, zone);
+
+        var events = await db.Events
+            .Where(e => e.StartsAt >= windowStart && e.StartsAt < windowEnd)
+            .OrderBy(e => e.StartsAt)
+            .ToListAsync(ct);
+
         return Results.Ok(new AgendaResponse(
-            start, end, zone.Id, AgendaExpander.Expand(entries, start, end, zone)));
+            start, end, zone.Id,
+            AgendaExpander.Expand(entries, start, end, zone),
+            events.Select(e => ToAgendaEvent(e, zone)).ToList()));
+    }
+
+    public static AgendaEvent ToAgendaEvent(Domain.Content.Event e, TimeZoneInfo zone)
+    {
+        var starts = TimeZoneInfo.ConvertTime(e.StartsAt, zone);
+        var ends = e.EndsAt is { } end ? TimeZoneInfo.ConvertTime(end, zone) : (DateTimeOffset?)null;
+
+        return new AgendaEvent(
+            e.Id,
+            e.CourseId,
+            DateOnly.FromDateTime(starts.DateTime),
+            e.AllDay ? null : TimeOnly.FromDateTime(starts.DateTime),
+            e.AllDay || ends is null ? null : TimeOnly.FromDateTime(ends.Value.DateTime),
+            e.StartsAt,
+            e.AllDay,
+            e.EventType.ToString(),
+            e.Title,
+            e.Location);
     }
 
     internal static async Task<IResult> DashboardAsync(
@@ -105,14 +153,26 @@ public static partial class PlanEndpointsViews
         var overdue = await db.Tasks.CountAsync(
             t => t.CompletedAt == null && t.DueAt != null && t.DueAt < startOfToday, ct);
 
-        var unread = await db.Notifications.CountAsync(
-            n => n.UserId == userId && n.ReadAt == null, ct);
+        // The same "has arrived" rule the inbox uses, not every unread row
+        // (J64). Reminders are written ahead with a future ScheduledAt; counting
+        // them put two weeks of doses that had not happened yet on the home
+        // badge, while the inbox it opens showed almost nothing.
+        var unread = await NotificationEndpoints
+            .Due(db, userId.Value, now)
+            .CountAsync(n => n.ReadAt == null, ct);
 
-        // A session started and never ended — the timer the user left running.
+        // A session started and never ended — the timer the user left running,
+        // closed first if it passed the 24-hour cap (J76).
         var active = await db.FocusSessions
             .Where(s => s.EndedAt == null)
             .OrderByDescending(s => s.StartedAt)
             .FirstOrDefaultAsync(ct);
+
+        if (active is not null && FocusRules.ExpireIfOverCap(active, now))
+        {
+            await db.SaveChangesAsync(ct);
+            active = null;
+        }
 
         return Results.Ok(new DashboardResponse(
             today,
@@ -126,11 +186,7 @@ public static partial class PlanEndpointsViews
             dueToday,
             overdue,
             unread,
-            active is null
-                ? null
-                : new FocusSessionResponse(
-                    active.Id, active.TaskId, active.StartedAt, active.EndedAt,
-                    active.PlannedBlocks, active.DoneBlocks, active.FocusSeconds)));
+            active is null ? null : PlanEndpoints.DescribeFocus(active, now)));
     }
 
     /// <summary>

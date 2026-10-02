@@ -1,7 +1,9 @@
+using System.Globalization;
 using CalisBakalimEnik.Domain.Notifications;
 using CalisBakalimEnik.Infrastructure.Notifications;
 using CalisBakalimEnik.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using CalisBakalimEnik.Application.Common.Localization;
 
 namespace CalisBakalimEnik.Infrastructure.Plan;
 
@@ -72,18 +74,28 @@ public sealed class ReminderSync(AppDbContext db, NotificationService notificati
     /// misleading.
     /// </remarks>
     public static string DueBody(
-        DateTimeOffset? due, DateTimeOffset reminder, TimeZoneInfo zone)
+        DateTimeOffset? due, DateTimeOffset reminder, TimeZoneInfo zone, string language)
     {
-        if (due is null) return "Hatırlatma zamanı geldi.";
+        if (due is null) return Texts.In(language, "Hatırlatma zamanı geldi.");
 
         var at = TimeZoneInfo.ConvertTime(due.Value, zone);
         var from = TimeZoneInfo.ConvertTime(reminder, zone);
+        var clock = at.ToString("HH:mm", CultureInfo.InvariantCulture);
 
-        if (at.Date == from.Date) return $"Bugün {at:HH:mm}'de.";
-        if (at.Date == from.Date.AddDays(1)) return $"Yarın {at:HH:mm}'de.";
+        if (at.Date == from.Date) return Texts.In(language, "Bugün {0}'de.", clock);
+        if (at.Date == from.Date.AddDays(1)) return Texts.In(language, "Yarın {0}'de.", clock);
 
-        return $"{at:dd.MM.yyyy HH:mm}'de.";
+        return Texts.In(language, "{0}'de.",
+            at.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture));
     }
+
+    /// <summary>The language the owner reads in (J80): notifications are
+    /// written in it when they are queued.</summary>
+    public async Task<string> LanguageOfAsync(Guid ownerId, CancellationToken ct) =>
+        Texts.Language(await db.Users
+            .Where(u => u.Id == ownerId)
+            .Select(u => u.Locale)
+            .FirstOrDefaultAsync(ct));
 
     public async Task<TimeZoneInfo> ZoneOfAsync(Guid ownerId, CancellationToken ct)
     {

@@ -3,6 +3,7 @@ using CalisBakalimEnik.Api.Extensions;
 using CalisBakalimEnik.Application.Common.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using static CalisBakalimEnik.Application.Common.Localization.Texts;
 
 namespace CalisBakalimEnik.Api.Middleware;
 
@@ -89,6 +90,11 @@ public sealed class ExceptionHandlingMiddleware(
             _ => (StatusCodes.Status500InternalServerError, "Beklenmeyen hata",
                 ProblemTypes.Internal, "Beklenmeyen bir hata oluştu.")
         };
+
+        // In the reader's language (J80); an exception message with no
+        // entry in the table stays as it was written.
+        title = T(title);
+        detail = T(detail);
 
         if (status >= 500)
         {
