@@ -84,6 +84,21 @@ restart_api() {  # env
     systemctl restart "$unit"
 }
 
+# A slot that is switched off (disabled and not running, e.g. prod before
+# launch) stays off. A deploy or rollback still starts it, because only a
+# running build can prove it is healthy, and then stops it again: the slot is
+# left as it was found, and it stays disabled across reboots.
+slot_is_off() {  # env
+    local unit="$1_calis_bakalim_enik"
+    ! systemctl is-enabled --quiet "$unit" && ! systemctl is-active --quiet "$unit"
+}
+
+leave_as_found() {  # env was_off
+    [ "$2" = yes ] || return 0
+    systemctl stop "$1_calis_bakalim_enik"
+    say "$1 was switched off before; stopped again after the check (still disabled)"
+}
+
 # The release that was live before the current one and still exists.
 previous_id() {  # kind env
     local base cur
@@ -126,10 +141,13 @@ rollback() {  # kind env
     say "$kind $env: $(current_id "$kind" "$env") -> $prev"
     switch_to "$kind" "$env" "$prev"
     if [ "$kind" = api ]; then
+        local was_off=no
+        slot_is_off "$env" && was_off=yes
         echo "   (database migrations are NOT rolled back; they are additive by rule)"
         restart_api "$env"
         healthy "$env" || die "$env API not healthy after rollback; journalctl -u ${env}_calis_bakalim_enik"
         say "healthy: $(curl -s "http://127.0.0.1:$(port_of "$env")/api/version")"
+        leave_as_found "$env" "$was_off"
     fi
 }
 
@@ -201,6 +219,9 @@ install_bundle() {  # file name
     rm -rf "${rel:?}/$id"
     mv -T "$rel/.$id.partial" "$rel/$id"
 
+    local was_off=no
+    slot_is_off "$env" && was_off=yes
+
     say "stopping $unit"
     systemctl stop "$unit"
 
@@ -214,8 +235,8 @@ install_bundle() {  # file name
             -h "$PGHOST" -p "$PGPORT" -U "$PGUSER_MIGRATIONS" -d "$PGDATABASE" \
             -v ON_ERROR_STOP=1 -q -f "$rel/$id/migrate.sql"
     ); then
-        echo "!! migrations failed; starting the previous build again" >&2
-        restart_api "$env"
+        echo "!! migrations failed; the previous build is still in place" >&2
+        [ "$was_off" = yes ] || restart_api "$env"
         rm -rf "${rel:?}/$id"
         exit 1
     fi
@@ -225,6 +246,7 @@ install_bundle() {  # file name
     restart_api "$env"
     if healthy "$env"; then
         say "healthy: $(curl -s "http://127.0.0.1:$(port_of "$env")/api/version")"
+        leave_as_found "$env" "$was_off"
         prune api "$env"
         rm -f "$src" "$src.sig"
         return 0
@@ -240,6 +262,7 @@ install_bundle() {  # file name
         # Gone, so a later rollback can never land on the build that failed.
         rm -rf "${rel:?}/$id"
     fi
+    leave_as_found "$env" "$was_off"
     exit 1
 }
 
